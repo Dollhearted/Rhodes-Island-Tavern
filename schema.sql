@@ -1,0 +1,2 @@
+-- 棋子、技能和全部数值由 server.py 的 UNITS / SKILLS 常量维护，不存储在 SQLite。
+CREATE TABLE players (id TEXT PRIMARY KEY,gold INTEGER NOT NULL DEFAULT 10,health INTEGER NOT NULL DEFAULT 50,round INTEGER NOT NULL DEFAULT 1);
