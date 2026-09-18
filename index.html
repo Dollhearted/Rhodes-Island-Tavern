@@ -1,353 +1,152 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>酒馆自走棋</title>
-<style>
-:root{--bg:#101722;--p:#1d2a3b;--l:#3a4d65;--g:#ffcf58;--t:#eef5ff;--m:#9db0c9;--ok:#78dc9c;--bad:#ff8192}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% -20%,#304b71,#101722 55%);color:var(--t);font:14px "Microsoft YaHei",sans-serif}main,header{max-width:1050px;margin:auto;padding:16px 22px}header{display:flex;justify-content:space-between;align-items:center}h1{font-size:23px;margin:0}.sub,.hint{color:var(--m);font-size:12px;margin-top:5px}.stats{display:flex;gap:10px}.stat{border:1px solid var(--l);border-radius:9px;padding:6px 12px;background:#192536}.stat b{display:block;color:var(--g);font-size:18px}.panel{background:#192536e8;border:1px solid var(--l);border-radius:13px;padding:14px;margin-bottom:15px}h2{font-size:13px;letter-spacing:1px;margin:0 0 10px;color:#b9c9e0}.board{display:flex;justify-content:center;align-items:center;gap:8px;min-height:105px;padding:10px;background:#0c121c;border-radius:999px;border:1px solid #27384e;overflow:visible}.board .slot{flex:0 0 calc((100% - 48px)/7)}.board>.card{flex:0 0 calc((100% - 48px)/7);max-width:130px;width:auto}.board>.insert-slot{flex:0 0 44px;min-height:74px;border-style:dotted}.slot{min-height:83px;border:1px dashed #41536a;border-radius:8px;display:flex;align-items:center;justify-content:center;position:relative}.slot:before{content:attr(data-slot);font-size:10px;color:#63748b;position:absolute;top:3px;left:5px}.enemy .slot{background:#2a1a22}.card{width:92%;min-height:65px;border:2px solid var(--c);border-radius:8px;background:#172638;padding:6px;cursor:pointer;box-shadow:0 0 10px #0004}.card:hover{filter:brightness(1.18)}.card[draggable="true"]{cursor:grab}.card[draggable="true"]:active{cursor:grabbing}.card.dragging{opacity:.55;filter:brightness(1.25)}.card.attacking{z-index:5;transition:transform .22s ease-in-out;filter:brightness(1.35)}.card.active{box-shadow:0 0 18px var(--g),0 0 0 3px #ffcf5888;filter:brightness(1.25)}.card.selected{outline:2px solid var(--g);outline-offset:2px}.slot.drop-target{border-color:var(--ok);background:#183323;box-shadow:0 0 0 2px #78dc9c55}.slot.drop-blocked{border-color:var(--bad);background:#321820}.card.skill{background:#2a2538}.card.dead{opacity:.25;filter:grayscale(1)}.name{font-weight:bold;font-size:12px}.info{font-size:10px;color:#bdd0eb;margin-top:5px}.hp{height:4px;background:#35445a;border-radius:4px;margin-top:6px;overflow:hidden}.hp i{display:block;height:100%;background:var(--ok)}.bench,.shop{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.bench .slot{min-height:82px}.shop{grid-template-columns:repeat(6,1fr)}.shop .card{width:100%;min-height:95px}.cost{color:var(--g);float:right}.controls{display:flex;gap:8px;margin-top:13px}.btn{border:0;border-radius:8px;background:#355477;color:white;padding:9px 13px;font-weight:bold;cursor:pointer}.btn.primary{background:#3d8dc0}.btn.gold{background:#8e6925}.btn:disabled{opacity:.45}.log{max-height:220px;overflow:auto;color:#c7d6e9;font-size:12px}.log div{padding:5px 0;border-bottom:1px solid #304158}.good{color:var(--ok)}.bad{color:var(--bad)}@media(max-width:700px){main,header{padding:12px}.bench{grid-template-columns:repeat(4,1fr)}.shop{grid-template-columns:repeat(3,1fr)}.slot{min-height:68px}.card{font-size:11px}.stats{gap:4px}.stat{padding:4px 6px}}
-</style><body><header><div><h1>♜ 酒馆自走棋</h1><div class="sub">单人 14 轮闯关 · 1×7 对战棋盘 · 12 格备战区</div></div><div class="stats"><div class="stat">生命<b id="hp">50</b></div><div class="stat">金币<b id="gold">10</b></div><div class="stat">下轮收入<b id="income">11</b></div><div class="stat">回合<b id="round">第 1/14 轮</b></div><div class="stat">阶段<b id="phase">备战 30s</b></div></div></header><main>
-<section class="panel enemy"><h2>下一轮 AI 阵容预览（1 × 7）</h2><div class="board" id="enemy"></div><div class="hint">备战期间可查看下一轮敌方棋子、星级、攻击与初始血量；战斗将使用这批固定敌人。</div></section><section class="panel"><h2>我的棋盘（1 × 7）</h2><div class="board" id="board"></div><div class="hint">拖动备战区棋子到棋盘空格部署；点击备战区棋子可选中后出售。上场棋子锁定，点击后会直接出售。技能卡点击后再点击己方棋子使用。</div></section>
-<section class="panel"><h2>备战区（12 张卡牌：棋子 + 技能）</h2><div class="bench" id="bench"></div></section><section class="panel"><h2>酒馆商店</h2><div class="shop" id="shop"></div><div class="controls"><button class="btn gold" id="refresh">刷新（1 金币）</button><button class="btn gold" id="upgrade">升级商店</button><button class="btn primary" id="fight">开始对战</button><button class="btn" id="skip">跳过备战</button><button class="btn" id="sell">出售选中</button><button class="btn" id="reset">新游戏</button></div></section><section class="panel"><h2>战报</h2><div class="log" id="log"></div></section></main>
-<script>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>酒馆自走棋</title><style>
+:root{--bg:#101722;--p:#1d2a3b;--l:#3a4d65;--g:#ffcf58;--t:#eef5ff;--m:#9db0c9;--ok:#78dc9c;--bad:#ff8192}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% -20%,#304b71,#101722 55%);color:var(--t);font:14px "Microsoft YaHei",sans-serif}main,header{max-width:1280px;margin:auto;padding:16px 22px}header{display:flex;justify-content:space-between;align-items:center}h1{font-size:28px;margin:0}.sub,.hint{color:var(--m);font-size:13px;margin-top:6px}.stats{display:flex;gap:10px}.stat{border:1px solid var(--l);border-radius:10px;padding:8px 16px;background:#192536}.stat b{display:block;color:var(--g);font-size:26px}.panel{background:#192536e8;border:1px solid var(--l);border-radius:16px;padding:18px;margin-bottom:22px}h2{font-size:23px;letter-spacing:1px;margin:0 0 14px;color:#c6d4e8}.board{display:flex;justify-content:center;align-items:center;gap:8px;min-height:322px;padding:20px;background:#0c121c;border-radius:30px;border:1px solid #27384e;overflow:visible}.board>.card{flex:0 0 160px}.insert-slot{flex:0 0 38px!important;min-height:256px!important;border-style:dotted!important}.slot{min-height:236px;border:1px dashed #41536a;border-radius:14px;display:flex;align-items:center;justify-content:center;position:relative}.slot:before{content:attr(data-slot);font-size:14px;color:#63748b;position:absolute;top:7px;left:10px}.enemy .slot{background:transparent;border-color:transparent}.enemy .slot:before{display:none}.card{width:160px;min-height:244px;border:3px solid var(--c,#e53935);border-radius:18px;background:linear-gradient(180deg,#1b3047,#142235);padding:12px;cursor:pointer;box-shadow:0 0 10px #0004;display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden}.card:hover{filter:brightness(1.16)}.card[draggable=true]{cursor:grab}.card.dragging{opacity:.55}.card.attacking{z-index:5;transition:transform .28s ease-in-out;filter:brightness(1.35)}.card.taunt{outline:4px solid #00d9ff;outline-offset:5px;box-shadow:0 0 18px #00d9ffaa}.card.shielded:before{content:"";position:absolute;inset:7px;border-radius:14px;background:linear-gradient(135deg,#8af2ff35,#8ab4ff18 45%,#fff1);border:1px solid #9ee7ffcc;box-shadow:inset 0 0 18px #8af2ff66;pointer-events:none;z-index:3}.card.dead{opacity:.28;filter:grayscale(1)}.card.skill{background:linear-gradient(180deg,#382c5f,#241936);border-style:dashed;color:#f3eaff}.card.golden,.card.golden-skill{--c:#ffd35a!important;border-color:#ffd35a;background:linear-gradient(180deg,#5b4012,#2b2519 58%,#182333);box-shadow:0 0 18px #ffd35a66}.card.golden .name,.card.golden-skill .name{color:#fff3b0;text-shadow:0 0 6px #ffd35a88}.name{font-weight:800;font-size:22px;line-height:1.18;min-height:52px;text-align:center;display:flex;align-items:center;justify-content:center;word-break:break-word}.info{font-size:15px;color:#d8e6fb;line-height:1.25;min-height:116px;overflow:hidden}.hp{height:6px;background:#35445a;border-radius:5px;overflow:hidden}.hp i{display:block;height:100%;background:var(--ok)}.bench,.shop{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}.bench .slot,.shop .slot{min-height:260px}.slot.drop-target{border-color:var(--ok);background:#183323;box-shadow:0 0 0 2px #78dc9c55}.slot.drop-blocked{border-color:var(--bad);background:#321820}.shop.locked .slot{border-color:#ffd16688;box-shadow:inset 0 0 0 2px #ffd16633,0 0 14px #ffd16622}.shop.locked .slot:after{content:"";position:absolute;right:12px;top:18px;width:28px;height:13px;border:4px solid #ffd166;border-radius:999px;transform:rotate(-35deg);box-shadow:0 0 8px #ffd166;z-index:4}.controls{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}.btn{border:0;border-radius:9px;background:#355477;color:white;padding:10px 16px;font-weight:bold;cursor:pointer}.btn.primary{background:#3d8dc0}.btn.gold{background:#8e6925}.btn:disabled{opacity:.45}.btn.skip-ready{background:#c06b3d;box-shadow:0 0 14px #ff9b5a88}.log{max-height:240px;overflow:auto;color:#c7d6e9;font-size:14px}.log div{padding:6px 0;border-bottom:1px solid #304158}.good{color:var(--ok)}.bad{color:var(--bad)}.cleave-slash{position:fixed;height:8px;width:180px;border-radius:99px;background:linear-gradient(90deg,#0000,#fff7b0,#ff9b42,#0000);box-shadow:0 0 12px #ffb347,0 0 22px #ff7043;z-index:9999;pointer-events:none;transform:translate(-50%,-50%) rotate(-8deg)}.bullet{position:fixed;left:0;top:0;width:12px;height:12px;border-radius:50%;background:radial-gradient(circle,#fff6b8 0,#ffcf58 42%,#ff5a38 72%,#0000 73%);box-shadow:0 0 10px #ffcf58,0 0 18px #ff5a38;z-index:9999;pointer-events:none;transform:translate(-50%,-50%)}.badges{position:absolute;right:9px;bottom:9px;display:flex;gap:5px;z-index:4}.badge.revive{width:22px;height:12px;border:3px solid #ffe9a8;border-radius:50%;box-shadow:0 0 8px #ffe08a;transform:rotate(-12deg)}.badge.legacy{width:19px;height:24px;background:linear-gradient(180deg,#bac4d4,#718096);border:2px solid #e5ecf6;border-radius:9px 9px 3px 3px;box-shadow:0 0 7px #b7c3d6}.badge.venom{width:22px;height:22px;color:#e5ecf6;filter:drop-shadow(0 0 5px #b7c3d6);font-size:20px;line-height:22px;text-align:center}.badge.venom:before{content:"☠"}.keyword{font-weight:800;padding:0 2px;border-radius:4px}.kw-guard{color:#66d9ff}.kw-legacy{color:#c792ea}.kw-bullet-damage{color:#ff8a4c}.kw-bullet-strength{color:#ffd166}.kw-revive{color:#4dffb8}.kw-initiative{color:#ff3fd1}.kw-raid{color:#ff5f8f}.kw-on-deploy{color:#8ab4ff}.kw-cumulative{color:#f6c177}.kw-permanent{color:#ff9db5}.kw-battle-start{color:#7ee787}.kw-shield{color:#9ee7ff}.kw-guardian{color:#ffb86b}.kw-logistics{color:#a6e22e}.kw-death-feud{color:#ff6b6b}.kw-morale{color:#ffb000;text-shadow:0 0 5px #ffcf55aa}.kw-support{color:#56d4ff}.kw-recruit{color:#ff78c8}.kw-venom{color:#a8ff3e;text-shadow:0 0 5px #68d900aa}.kw-sell{color:#ff9f43}.kw-cleave{color:#ffb347;text-shadow:0 0 5px #ff704388}.kw-synergy{color:#72f1b8;text-shadow:0 0 5px #42c98e88}.kw-return-camp{color:#70d6ff}.kw-defense-mechanism{color:#b8f2a1}.kw-assimilate{color:#79e6d0;text-shadow:0 0 5px #44cbb488}.kw-pick{color:#d7a7ff}.bullet-power{color:#ffd166;font-weight:bold}.detail-pop{position:fixed;z-index:10000;max-width:420px;background:#101722f8;border:1px solid #5b6f8a;border-radius:14px;padding:16px;box-shadow:0 8px 28px #0009;color:var(--t);font-size:18px;line-height:1.45}.detail-pop.golden{border-color:#ffd35a;background:linear-gradient(180deg,#241c0d,#141922);box-shadow:0 0 22px #ffd35a55}.detail-pop h3{margin:0 0 8px;font-size:26px;color:#fff}.detail-pop .mechanic{border-top:1px solid #31435a;margin-top:8px;padding-top:8px}.gold-toggle{margin-top:12px;border:1px solid #ffd35a;border-radius:8px;background:#2c220f;color:#ffe08a;padding:6px 12px;cursor:pointer}.gold-toggle:disabled{opacity:.7;background:#5a4211;cursor:default}.discover-pop{position:fixed;inset:0;background:#0009;z-index:10000;display:flex;align-items:center;justify-content:center}.discover-box{background:#111a28;border:1px solid #607697;border-radius:16px;padding:22px}.discover-options{display:flex;gap:16px}.discover-option{background:transparent;border:0;padding:0;color:inherit;cursor:pointer}.discover-option:hover{filter:brightness(1.2);transform:translateY(-2px)}@media(max-width:900px){.bench,.shop{grid-template-columns:repeat(3,1fr)}.card{width:130px;min-height:210px}.board>.card{flex-basis:130px}.info{font-size:13px}.name{font-size:18px}}
+</style></head><body><header><div><h1>♜ 酒馆自走棋</h1><div class="sub">单人 14 轮闯关 · 1×7 对战棋盘 · 12 格备战区</div></div><div class="stats"><div class="stat">生命<b id="hp">50</b></div><div class="stat">金币<b id="gold">3</b></div><div class="stat">下轮收入<b id="income">4</b></div><div class="stat">回合<b id="round">第 1/14 轮</b></div><div class="stat">阶段<b id="phase">备战 30s</b></div></div></header><main>
+<section class="panel enemy"><h2>下一轮 AI 阵容预览（1 × 7）</h2><div class="board" id="enemy"></div><div class="hint">备战期间可查看下一轮敌方棋子；战斗将使用这批固定敌人。</div></section><section class="panel"><h2>我的棋盘（1 × 7）</h2><div class="board" id="board" ondragenter="allowBoardAreaSkillDrop(event)" ondragover="allowBoardAreaSkillDrop(event)" ondragleave="leaveDrop(event)" ondrop="dropSkillToBoardArea(event)"></div><div class="hint">拖动备战区棋子到棋盘部署；将备战区或棋盘棋子拖入商店可出售（1 金币）。右键棋子可查看详细描述。</div></section><section class="panel"><h2>备战区（12 张卡牌：棋子 + 技能）</h2><div class="bench" id="bench" ondragenter="allowBenchAreaDrop(event)" ondragover="allowBenchAreaDrop(event)" ondragleave="leaveDrop(event)" ondrop="dropToBenchArea(event)"></div></section><section class="panel"><h2>酒馆商店</h2><div class="shop" id="shop"></div><div class="controls"><button class="btn gold" id="refresh">刷新（1 金币）</button><button class="btn gold" id="upgrade">升级商店</button><button class="btn" id="lockShop">锁定商店</button><button class="btn primary" id="fight">结束备战</button><button class="btn" id="skip" style="display:none">跳过对战</button><button class="btn" id="sell">出售选中</button><button class="btn" id="reset">新游戏</button></div></section><section class="panel"><h2>战报</h2><div class="log" id="log"></div></section></main><script>
+
 const playerId=localStorage.autochessPlayerId||(localStorage.autochessPlayerId='p-'+crypto.randomUUID());
-const api=(url,body)=>fetch(url,body?{method:'POST',headers:{'Content-Type':'application/json','X-Player-Id':playerId},body:JSON.stringify(body)}:{headers:{'X-Player-Id':playerId}}).then(async r=>{const d=await r.json();if(!r.ok)throw Error(d.error);return d});
-const PREP_TIMES=[30,30,30,45,45,60,60,90,90,90,90,90,90,90];
-const s={gold:10,hp:50,round:1,board:Array(7).fill(null),enemy:Array(7).fill(null),bench:Array(12).fill(null),shop:[],selected:null,dragging:null,shopLevel:1,upgradeCost:5,nextIncome:11,shopSlots:4,busy:false,phase:'\u5907\u6218',prepSeconds:30,timer:null};
-const $=x=>document.querySelector(x);
-const log=(x,c='')=>$('#log').insertAdjacentHTML('afterbegin',`<div class="${c}">${x}</div>`);
-const live=u=>u&&u.current_hp!==undefined?u.current_hp:u?.max_hp;
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-
-function compactTeam(team){return team.filter(Boolean).slice(0,7)}
-function padTeam(team){const c=compactTeam(team);return c.concat(Array(7-c.length).fill(null))}
-
-function card(u,where,i){
-  if(!u)return '';
-  const skill=u.card_type==='skill';
-  const hp=live(u),max=u.max_hp||1;
-  const canDrag=(where==='bench'||where==='shop'||where==='board')&&!skill&&s.phase==='\u5907\u6218'&&!s.busy;
-  const classes=['card',skill?'skill':'',where==='bench'&&s.selected===i?'selected':'',hp<=0?'dead':''].filter(Boolean).join(' ');
-  const dragAttrs=canDrag?` draggable="true" ondragstart="dragCard(event,'${where}',${i})" ondragend="dragEnd(event)"`:'';
-  const dataAttrs=` data-side="${where}" data-slot="${i+1}"`;
-  return `<div class="${classes}" style="--c:${u.color}" onclick="choose('${where}',${i})" oncontextmenu="rightClickCard(event,'${where}',${i})"${dataAttrs}${dragAttrs}><div class="name">${u.name}<span class="cost">${u.cost||''}\u25c6</span></div><div class="info">${skill?u.description:`\u653b ${u.attack}\u3000\u8840 ${Math.max(0,hp)}/${max}`}</div>${skill?'':`<div class="hp"><i style="width:${Math.max(0,hp/max*100)}%"></i></div>`}</div>`;
-}
-
-function insertSlot(pos){
-  return `<div class="slot insert-slot" data-slot="+" ondragenter="allowBoardDrop(event,${pos})" ondragover="allowBoardDrop(event,${pos})" ondragleave="leaveDrop(event)" ondrop="dropToBoardInsert(event,${pos})"></div>`;
-}
-
-function renderBoard(where){
-  if(s.phase==='\u6218\u6597\u4e2d')return s[where].map((u,i)=>u?card(u,where,i):'').join('');
-  const units=compactTeam(s[where]);
-  if(where==='board'){
-    let html=units.length<7?insertSlot(0):'';
-    units.forEach((u,i)=>{html+=card(u,'board',i);if(units.length<7)html+=insertSlot(i+1)});
-    return html||insertSlot(0);
-  }
-  return units.map((u,i)=>card(u,where,i)).join('');
-}
-
-function draw(){
-  if(s.phase==='\u5907\u6218')s.board=padTeam(s.board);
-  $('#enemy').innerHTML=renderBoard('enemy');
-  $('#board').innerHTML=renderBoard('board');
-  $('#bench').innerHTML=s.bench.map((u,i)=>`<div class="slot" data-slot="${i+1}" ondragenter="allowBenchDrop(event,${i})" ondragover="allowBenchDrop(event,${i})" ondragleave="leaveDrop(event)" ondrop="dropToBench(event,${i})">${card(u,'bench',i)}</div>`).join('');
-  while(s.shop.length<s.shopSlots)s.shop.push(null);
-  $('#shop').innerHTML=s.shop.map((u,i)=>`<div class="slot" data-slot="${i+1}">${card(u,'shop',i)}</div>`).join('');
-  $('#gold').textContent=s.gold;
-  $('#hp').textContent=s.hp;
-  $('#income').textContent=s.nextIncome;
-  $('#round').textContent=`\u7b2c ${Math.min(s.round,14)}/14 \u8f6e`;
-  $('#phase').textContent=s.phase==='\u5907\u6218'?`\u5907\u6218 ${s.prepSeconds}s`:s.phase;
-  $('#fight').disabled=s.busy||s.phase!=='\u5907\u6218';
-  $('#skip').disabled=s.busy||s.phase!=='\u5907\u6218';
-  $('#refresh').disabled=s.busy||s.phase!=='\u5907\u6218';
-  $('#upgrade').textContent=s.shopLevel>=6?'\u5546\u5e97\u6ee1\u7ea7':`\u5347\u7ea7\u5546\u5e97\uff08${s.upgradeCost} \u91d1\u5e01\uff5cLv.${s.shopLevel}\uff09`;
-  $('#upgrade').disabled=s.busy||s.phase!=='\u5907\u6218'||s.shopLevel>=6;
-  $('#sell').disabled=s.busy||s.selected===null||!s.bench[s.selected]||s.bench[s.selected].card_type!=='unit';
-}
-
-function canDeployFromBench(from,pos){
-  const unit=s.bench[from],units=compactTeam(s.board);
-  return !s.busy&&s.phase==='\u5907\u6218'&&Number.isInteger(from)&&Number.isInteger(pos)&&from>=0&&from<s.bench.length&&pos>=0&&pos<=units.length&&units.length<7&&unit&&unit.card_type==='unit';
-}
-
-function deployFromBenchInsert(from,pos){
-  if(!canDeployFromBench(from,pos))return false;
-  const unit=s.bench[from],units=compactTeam(s.board);
-  units.splice(pos,0,{...unit,current_hp:unit.max_hp});
-  s.board=padTeam(units);
-  s.bench[from]=null;
-  if(s.selected===from)s.selected=null;
-  log(`\u90e8\u7f72 ${unit.name}`,'good');
-  return true;
-}
-function canMoveBoard(from,pos){
-  const units=compactTeam(s.board);
-  return !s.busy&&s.phase==='\u5907\u6218'&&Number.isInteger(from)&&Number.isInteger(pos)&&from>=0&&from<units.length&&pos>=0&&pos<=units.length;
-}
-
-function moveBoardInsert(from,pos){
-  if(!canMoveBoard(from,pos))return false;
-  const units=compactTeam(s.board);
-  const [unit]=units.splice(from,1);
-  if(pos>from)pos--;
-  units.splice(pos,0,unit);
-  s.board=padTeam(units);
-  log(`\u8c03\u6574 ${unit.name} \u7684\u4f4d\u7f6e`,'good');
-  return true;
-}
-
-
-function clearDropMarks(){
-  document.querySelectorAll('.slot.drop-target,.slot.drop-blocked').forEach(el=>el.classList.remove('drop-target','drop-blocked'));
-}
-
-window.dragCard=(ev,where,i)=>{
-  const unit=s[where]?.[i];
-  if(!unit||unit.card_type!=='unit'||s.busy||s.phase!=='\u5907\u6218'||!['bench','shop','board'].includes(where)){
-    ev.preventDefault();return false;
-  }
-  s.dragging={type:where,index:i};
-  ev.dataTransfer.effectAllowed='move';
-  ev.dataTransfer.setData('text/plain',JSON.stringify(s.dragging));
-  ev.currentTarget.classList.add('dragging');
-};
-
-window.dragEnd=ev=>{
-  ev.currentTarget.classList.remove('dragging');
-  clearDropMarks();
-  s.dragging=null;
-};
-
-function readDrag(ev){
-  if(s.dragging)return s.dragging;
-  try{return JSON.parse(ev.dataTransfer.getData('text/plain')||'null')}catch{return null}
-}
-
-window.allowBoardDrop=(ev,pos)=>{
-  const d=readDrag(ev); if(!d)return;
-  ev.preventDefault();ev.currentTarget.classList.remove('drop-target','drop-blocked');
-  if((d.type==='bench'&&canDeployFromBench(d.index,pos))||(d.type==='board'&&canMoveBoard(d.index,pos))){ev.dataTransfer.dropEffect='move';ev.currentTarget.classList.add('drop-target')}
-  else{ev.dataTransfer.dropEffect='none';ev.currentTarget.classList.add('drop-blocked')}
-};
-
-window.allowBenchDrop=(ev,i)=>{
-  const d=readDrag(ev); if(!d)return;
-  ev.preventDefault();ev.currentTarget.classList.remove('drop-target','drop-blocked');
-  if(d.type==='shop'&&!s.bench[i]){ev.dataTransfer.dropEffect='move';ev.currentTarget.classList.add('drop-target')}
-  else{ev.dataTransfer.dropEffect='none';ev.currentTarget.classList.add('drop-blocked')}
-};
-
-window.leaveDrop=ev=>{ev.currentTarget.classList.remove('drop-target','drop-blocked')};
-
-window.dropToBoardInsert=(ev,pos)=>{
-  const d=readDrag(ev); if(!d)return;
-  ev.preventDefault();
-  if(d.type==='bench')deployFromBenchInsert(d.index,pos)||log('\u53ea\u80fd\u5c06\u5907\u6218\u533a\u68cb\u5b50\u63d2\u5165\u5df1\u65b9\u68cb\u76d8\u3002','bad');
-  else if(d.type==='board')moveBoardInsert(d.index,pos)||log('\u65e0\u6cd5\u79fb\u52a8\u8be5\u4e0a\u573a\u68cb\u5b50\u3002','bad');
-  else log('\u53ea\u80fd\u5c06\u68cb\u5b50\u653e\u5230\u5df1\u65b9\u68cb\u76d8\u3002','bad');
-  clearDropMarks();s.dragging=null;draw();
-};
-
-window.dropToBench=async(ev,i)=>{
-  const d=readDrag(ev); if(!d)return;
-  ev.preventDefault();
-  if(d.type!=='shop'||s.bench[i]){log('\u53ea\u80fd\u628a\u5546\u5e97\u68cb\u5b50\u62d6\u5230\u7a7a\u5907\u6218\u683c\u8d2d\u4e70\u3002','bad');clearDropMarks();return draw()}
-  const c=s.shop[d.index];
-  if(!c)return;
-  if(s.gold<c.cost){log('\u91d1\u5e01\u4e0d\u8db3','bad');clearDropMarks();return draw()}
-  try{
-    const r=await api('/api/buy',{card_id:c.id});
-    syncPlayer(r);s.bench[i]={...c};s.shop[d.index]=null;log(`\u8d2d\u5165 ${c.name}`,'good');
-  }catch(e){log(e.message,'bad')}
-  clearDropMarks();s.dragging=null;draw();
-};
-
-
-function syncPlayer(r){
-  s.gold=r.gold;
-  if(r.health!==undefined)s.hp=r.health;
-  if(r.round!==undefined)s.round=Math.max(1,Math.min(r.round,14));
-  if(r.shop_level!==undefined)s.shopLevel=r.shop_level;
-  if(r.upgrade_cost!==undefined)s.upgradeCost=r.upgrade_cost;
-  if(r.next_income!==undefined)s.nextIncome=r.next_income;
-  if(r.shop_slots!==undefined){s.shopSlots=r.shop_slots;while(s.shop.length<s.shopSlots)s.shop.push(null);if(s.shop.length>s.shopSlots)s.shop.length=s.shopSlots;}
-}
-
-window.choose=async(where,i)=>{
-  if(s.busy)return;
-  if(where==='shop'){
-    const c=s.shop[i];
-    if(!c)return;
-    log(`\u62d6\u52a8 ${c.name} \u5230\u5907\u6218\u533a\u7a7a\u683c\u8d2d\u4e70\u3002`);
-    return;
-  }
-  if(where==='bench'){
-    const b=s.bench[i];
-    if(!b)return;
-    s.selected=s.selected===i?null:i;
-    if(s.selected===null)log('\u53d6\u6d88\u9009\u62e9');
-    else log(b.card_type==='unit'?`\u9009\u4e2d ${b.name}\uff1b\u53ef\u62d6\u5230\u68cb\u76d8\u4e2d\u63d2\u5165\u4e0a\u9635\uff0c\u6216\u70b9\u51fb\u201c\u51fa\u552e\u9009\u4e2d\u201d\u3002`:`\u9009\u4e2d ${b.name}`);
-    return draw();
-  }
-  if(where==='board'){
-    if(!s.board[i])return;
-    const b=s.bench[s.selected];
-    if(b?.card_type==='skill'){
-      if(b.id==='rage')s.board[i].attack+=b.effect_value;
-      if(b.id==='ward'||b.id==='vitality'){
-        s.board[i].max_hp+=b.effect_value;
-        s.board[i].current_hp=(s.board[i].current_hp||s.board[i].max_hp)+b.effect_value;
-      }
-      s.bench[s.selected]=null;
-      s.selected=null;
-      log(`\u6280\u80fd\u5df2\u4f5c\u7528\u4e8e ${s.board[i].name}`,'good');
+const api=(url,body)=>fetch(url,body!==undefined?{method:'POST',headers:{'Content-Type':'application/json','X-Player-Id':playerId},body:JSON.stringify(body)}:{headers:{'X-Player-Id':playerId}}).then(async r=>{const txt=await r.text();let d;try{d=JSON.parse(txt)}catch{throw Error('接口返回异常：'+r.status+' '+txt.slice(0,40))}if(!r.ok)throw Error(d.error||'error');return d});
+const PREP_TIMES=[30,30,30,45,45,60,60,90,90,90,90,90,90,90], UNIT_CARD_COST=3;
+const s={gold:3,hp:50,round:1,board:Array(7).fill(null),enemy:Array(7).fill(null),bench:Array(12).fill(null),shop:[],cards:[],dragging:null,shopLevel:1,upgradeCost:5,nextIncome:4,shopSlots:4,busy:false,phase:'备战',prepSeconds:30,timer:null,shopLocked:false,skipBattleAvailable:false,skipBattle:false,assimilatedSources:{},fertileSoilGrowth:0,pendingNextRoundGold:0,battleWagers:0,freeRefreshes:0};
+const $=x=>document.querySelector(x), sleep=ms=>new Promise(r=>setTimeout(r,ms));
+// 点击部署：选中备战区棋子后，点击棋盘中的任意插槽即可上场。
+s.selectedBench=null;
+document.head.insertAdjacentHTML('beforeend','<style>.card.selected{outline:4px solid var(--g);outline-offset:4px;filter:brightness(1.18)}</style>');
+document.addEventListener('click',event=>{
+  const benchCard=event.target.closest('.card[data-side="bench"]');
+  if(benchCard&&s.phase==='备战'&&!s.busy){
+    const index=Number(benchCard.dataset.slot)-1,unit=s.bench[index];
+    if(unit?.card_type==='unit'){
+      event.preventDefault();event.stopImmediatePropagation();
+      s.selectedBench=s.selectedBench===index?null:index;
       draw();
-    }else log('\u4e0a\u573a\u68cb\u5b50\u53ef\u62d6\u52a8\u8c03\u6574\u4f4d\u7f6e\uff1b\u53f3\u952e\u53ef\u51fa\u552e\u3002');
-  }
-};
-
-window.rightClickCard=(ev,where,i)=>{
-  if(where!=='board')return;
-  ev.preventDefault();
-  if(s.busy||s.phase!=='\u5907\u6218')return;
-  sellCard('board',i,true);
-};
-
-async function sellCard(where,index,half=false){
-  const unit=where==='board'?s.board[index]:s.bench[index];
-  if(!unit||unit.card_type!=='unit')return log('\u53ea\u80fd\u51fa\u552e\u68cb\u5b50','bad');
-  try{
-    const r=await api('/api/sell',{card_id:unit.id,half});
-    syncPlayer(r);
-    if(where==='board')s.board[index]=null;else s.bench[index]=null;
-    s.selected=null;
-    log(`${half?'\u534a\u4ef7':''}\u51fa\u552e ${unit.name}\uff0c\u83b7\u5f97 ${r.refund} \u91d1\u5e01\u3002`,'good');
-    draw();
-  }catch(e){log(e.message,'bad')}
-}
-
-async function refresh(){
-  try{const r=await api('/api/refresh',{});syncPlayer(r);s.shop=r.shop;draw()}catch(e){log(e.message,'bad')}
-}
-
-async function upgradeShop(){
-  try{const r=await api('/api/upgrade_shop',{});syncPlayer(r);log(`\u5546\u5e97\u5347\u7ea7\u5230 Lv.${s.shopLevel}\uff0c\u82b1\u8d39 ${r.spent} \u91d1\u5e01\u3002`,'good');draw()}catch(e){log(e.message,'bad')}
-}
-
-function startPrep(){
-  clearInterval(s.timer);
-  if(s.round>14||s.hp<=0){
-    s.phase='\u5df2\u5b8c\u6210';
-    log(s.hp<=0?'\u751f\u547d\u5f52\u96f6\uff0c\u6311\u6218\u5931\u8d25\u3002':'\u5df2\u5b8c\u6210\u7b2c 14/14 \u8f6e\uff0c\u5355\u4eba\u6a21\u5f0f\u7ed3\u675f\uff01',s.hp<=0?'bad':'good');
-    return draw();
-  }
-  s.phase='\u5907\u6218';
-  s.prepSeconds=PREP_TIMES[s.round-1];
-  s.enemy=Array(7).fill(null);
-  draw();
-  log(`\u7b2c ${s.round}/14 \u8f6e\u5907\u6218\u5f00\u59cb\uff1a${s.prepSeconds} \u79d2\u540e\u81ea\u52a8\u6218\u6597\u3002`);
-  api('/api/enemy',{round:s.round}).then(enemy=>{
-    if(s.phase==='\u5907\u6218'){
-      s.enemy=enemy;
-      log(`\u7b2c ${s.round}/14 \u8f6e\u654c\u65b9\u9635\u5bb9\u5df2\u63ed\u793a\u3002`,'good');
-      draw();
+      if(s.selectedBench!==null)document.querySelector('.card[data-side="bench"][data-slot="'+(s.selectedBench+1)+'"]')?.classList.add('selected');
+      return;
     }
-  }).catch(e=>log(e.message,'bad'));
-  s.timer=setInterval(()=>{
-    s.prepSeconds--;
-    draw();
-    if(s.prepSeconds<=0){clearInterval(s.timer);fight()}
-  },1000);
-}
-
-
-function updateCardHpElement(el,unit,hp){
-  if(!el||!unit)return;
-  const max=unit.max_hp||1;
-  const info=el.querySelector('.info');
-  if(info)info.textContent=`\u653b ${unit.attack}\u3000\u8840 ${Math.max(0,hp)}/${max}`;
-  const bar=el.querySelector('.hp i');
-  if(bar)bar.style.width=`${Math.max(0,hp/max*100)}%`;
-  if(hp<=0)el.classList.add('dead');
-}
-
-async function animateAttackEvent(e){
-  const fromWhere=e.side==='left'?'board':'enemy';
-  const toWhere=e.target_side==='left'?'board':'enemy';
-  const attacker=document.querySelector(`.card[data-side="${fromWhere}"][data-slot="${e.from_slot}"]`);
-  const target=document.querySelector(`.card[data-side="${toWhere}"][data-slot="${e.to_slot}"]`);
-  if(attacker){
-    attacker.classList.add('active');
-    await sleep(1000);
-    attacker.classList.remove('active');
-  }else await sleep(1000);
-  if(attacker&&target){
-    const a=attacker.getBoundingClientRect(),t=target.getBoundingClientRect();
-    const dx=(t.left+t.width/2)-(a.left+a.width/2),dy=(t.top+t.height/2)-(a.top+a.height/2);
-    attacker.classList.add('attacking');
-    attacker.style.transform=`translate(${dx*.82}px,${dy*.82}px) scale(1.08)`;
-    await sleep(240);
-  }else await sleep(240);
-  const arr=toWhere==='board'?s.board:s.enemy;
-  const unit=arr[e.to_slot-1];
-  if(unit){
-    unit.current_hp=e.target_hp;
-    updateCardHpElement(target,unit,e.target_hp);
   }
-  log(`${e.side==='left'?'\u6211\u65b9':'\u5bf9\u624b'} ${e.from}[${e.from_slot}] \u2192 ${e.to}[${e.to_slot}]\uff0c\u9020\u6210 ${e.damage} \u4f24\u5bb3${e.target_dead?'\uff0c\u76ee\u6807\u5012\u4e0b':''}`);
-  await sleep(1000);
-  if(attacker){
-    attacker.style.transform='translate(0,0) scale(1)';
-    await sleep(240);
-    attacker.classList.remove('attacking');
-  }
-  if(unit&&e.target_dead)arr[e.to_slot-1]=null;
-  draw();
-}
+  const insert=event.target.closest('#board .insert-slot');
+  if(!insert||s.phase!=='备战'||s.busy||s.selectedBench===null)return;
+  const unit=s.bench[s.selectedBench];
+  if(!unit||unit.card_type!=='unit')return;
+  const team=compact(s.board);
+  if(team.length>=7){log('棋盘已满，无法上场。','bad');return;}
+  event.preventDefault();event.stopImmediatePropagation();
+  const position=[...insert.parentElement.children].slice(0,[...insert.parentElement.children].indexOf(insert)).filter(el=>el.classList.contains('card')).length;
+  s.bench[s.selectedBench]=null;team.splice(position,0,unit);s.board=pad(team);s.selectedBench=null;
+  onDeploy(unit);tryCombineTriples();draw();
+},true);
+const log=(x,c='')=>$('#log').insertAdjacentHTML('afterbegin','<div class="'+c+'">'+x+'</div>');
+const esc=x=>String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const live=u=>u&&(u.current_hp!==undefined?u.current_hp:u.max_hp), compact=a=>a.filter(Boolean).slice(0,7), pad=a=>compact(a).concat(Array(7-compact(a).length).fill(null)), emptyBench=()=>s.bench.findIndex(x=>!x);
+function syncPlayer(r){s.gold=r.gold;s.hp=r.health??r.hp??s.hp;s.round=r.round??s.round;s.shopLevel=r.shop_level??s.shopLevel;s.upgradeCost=r.upgrade_cost??s.upgradeCost;s.nextIncome=r.next_income??r.income??s.nextIncome;s.shopSlots=r.shop_slots??s.shopSlots}
+function bp(u){return Number(u?.bullet_strength||0)+Number(u?.bullet_strength_temp||0)+Number(u?.bullet_power||0)+Number(u?.ammo_strength||0)+Number(u?.ammo_power||0)}
+function renderDesc(d){let out=esc(d||'');const kws={'横斩':'cleave','协同':'synergy','防御机制':'defense-mechanism','回营':'return-camp','兼并':'assimilate','挑选':'pick','售出':'sell','鸩毒':'venom','支援':'support','招募':'recruit','战意':'morale','先手':'initiative','突袭':'raid','复活':'revive','上场':'on-deploy','累计':'cumulative','永久':'permanent','战斗开始':'battle-start','嘲讽':'guard','护盾':'shield','守护':'guardian','后勤':'logistics','死仇':'death-feud','遗计':'legacy','铳弹伤害':'bullet-damage','铳弹强度':'bullet-strength'};for(const [k,c] of Object.entries(kws))out=out.replaceAll(k,'<span class="keyword kw-'+c+'">'+k+'</span>');return out}
+function mechanicDetails(u){const m=new Set(u.mechanics||[]),rows=[];if(m.has('guard')||u.guard||/嘲讽/.test(u.description||''))rows.push(['kw-guard','嘲讽','此棋子会优先被选为攻击目标。']);if(m.has('on_deploy')||u.on_deploy)rows.push(['kw-on-deploy','上场','棋子放上棋盘时，触发效果。']);if(m.has('legacy')||u.legacy)rows.push(['kw-legacy','遗计','战斗阶段棋子阵亡时触发效果。']);if(m.has('bullet_damage')||/铳弹伤害/.test(u.description||''))rows.push(['kw-bullet-damage','铳弹伤害','触发时不碰撞，改为远程攻击；对敌方造成的伤害为基础数值 + 自身铳弹强度，对友方造成的伤害仅使用基础数值。']);if(m.has('revive')||u.revive)rows.push(['kw-revive','复活','战斗阶段阵亡后召唤一个不带复活效果的初始属性原棋子。']);if(m.has('initiative')||u.initiative)rows.push(['kw-initiative','先手','每回合战斗开始后进入先手阶段，双方棋子从左到右轮流结算先手与突袭。']);if(m.has('raid')||u.raid)rows.push(['kw-raid','突袭','突袭(X)：先手阶段或战斗中被召唤时立刻攻击X次；无法触发连击，且无法攻击潜伏的部将。突袭不受锡人效果影响。']);if(m.has('shield')||u.shield)rows.push(['kw-shield','护盾','免疫一次伤害，唯一效果不可叠加。']);if(m.has('guardian')||u.guardian)rows.push(['kw-guardian','守护','此棋子每次被攻击前，触发效果。']);if(m.has('cleave')||u.cleave)rows.push(['kw-cleave','横斩','对目标及相邻两个棋子造成同等攻击力伤害。']);if(m.has('synergy')||u.synergy){const x=(u.synergy||{}).faction||'X';rows.push(['kw-synergy','协同('+x+')','上场指定阵营（'+x+'）的棋子时触发效果；协同不是上场机制，不受可露希尔加成。'])}if(m.has('return_camp')||u.return_camp)rows.push(['kw-return-camp','回营','每回合备战阶段开始时，触发该效果。']);if(m.has('defense_mechanism')||u.defense_mechanism)rows.push(['kw-defense-mechanism','防御机制','嘲讽；护盾；锁血；潜伏；复活。']);if(m.has('assimilate')||u.assimilate)rows.push(['kw-assimilate','兼并','移除一个棋子并获得其属性。备战阶段被兼并的棋子永久移除；战斗阶段被兼并的棋子在战斗结束后返回队伍。妮芙仅在本场战斗中获得被兼并棋子的遗计，战斗结束后移除。被妮芙兼并的棋子会从靠近妮芙的一侧开始、由右向左依次结算遗计和复活，且无法获得同时被兼并棋子的遗计效果。']);if(m.has('sell')||u.sell)rows.push(['kw-sell','售出','出售该棋子时，触发效果。']);if(m.has('pick')||u.pick)rows.push(['kw-pick','挑选','3张牌中选取一张。']);if(m.has('venom')||u.venom)rows.push(['kw-venom','鸩毒','首次造成伤害后立刻消灭目标，唯一效果不可叠加。']);if(m.has('morale')||u.morale)rows.push(['kw-morale','战意','此棋子在己方场上时，每次属性提升，触发效果（战意效果无法相互触发）。']);if(m.has('support')||u.support)rows.push(['kw-support','支援','支援(X)：玩家使用X次技能卡时触发效果，默认为支援(1)；棋子释放技能卡不会触发。']);if(m.has('recruit')||u.recruit)rows.push(['kw-recruit','招募','购买或通过【紧急支援】等发现效果获得此棋子时，触发效果。棋子或技能卡效果直接从商店获取或者直接获得的棋子无法触发招募效果。']);if(m.has('cumulative')||u.cumulative_damage||u.gold_spend)rows.push(['kw-cumulative','累计','该效果触发所需的计数将永久留存直至效果触发，不会随回合结束重置。']);if(m.has('permanent')||/永久/.test(u.description||''))rows.push(['kw-permanent','永久','战斗中获得此效果，可以永久保留；不是永久获得的属性和效果会在战斗结束后移除。']);if(m.has('logistics')||u.logistics||/后勤/.test(u.description||''))rows.push(['kw-logistics','后勤','每回合招募阶段结束时，触发效果。']);return rows.map(r=>'<div class="mechanic"><span class="keyword '+r[0]+'">'+r[1]+'</span>：'+r[2]+'</div>').join('')}
+function hasMark(u,k){return !!(u&&(u[k]||(u.mechanics||[]).includes(k)))}
+function bulletInfoHtml(u){const t=bp(u)+Number(u?.bullet_damage||0);return t>0?'<br><span class="bullet-power">铳弹强度 +'+t+'</span>':''}
+function counterInfo(u){if(u?.gold_spend){const th=Number(u.gold_spend.threshold||7),c=Number(u.gold_spent_count||0);return '<br><span class="keyword kw-cumulative">累计消费</span> '+c+'/'+th}const e=u?.cumulative_damage,has=!!(e||u?.id==='Enforcer'||u?.cumulative_damage_count!==undefined||u?.mostima_damage_count!==undefined);if(!has)return '';const key=(e||{}).counter_key||'cumulative_damage_count',th=Number((e||{}).threshold||3),c=Number(u[key]||0);return '<br><span class="keyword kw-cumulative">累计</span> '+c+'/'+th}
+function badgeHtml(u){let b='';if(hasMark(u,'revive'))b+='<span class="badge revive" title="复活"></span>';if(hasMark(u,'legacy'))b+='<span class="badge legacy" title="遗计"></span>';if(hasMark(u,'venom'))b+='<span class="badge venom" title="鸩毒"></span>';return b?'<div class="badges">'+b+'</div>':''}
+function card(u,w,i){if(!u)return '';const skill=u.card_type==='skill',hp=live(u),max=u.max_hp||1,can=s.phase==='备战'&&!s.busy&&((w==='bench'&&(u.card_type==='unit'||u.card_type==='skill'))||(w==='shop'&&u.card_type==='unit')||(w==='board'&&u.card_type==='unit'));const cls=['card',skill?'skill':'',u.golden?'golden':'',u.golden_skill?'golden-skill':'',hasMark(u,'guard')?'taunt':'',hasMark(u,'shield')?'shielded':'',hp<=0?'dead':''].filter(Boolean).join(' '),drag=can?' draggable="true" ondragstart="dragCard(event,\''+w+'\','+i+')" ondragend="dragEnd(event)"':'',drop=w==='board'&&!skill?' ondragenter="allowUnitSkillDrop(event,'+i+')" ondragover="allowUnitSkillDrop(event,'+i+')" ondragleave="leaveDrop(event)" ondrop="dropSkillToUnit(event,'+i+')"':'';const info=skill?renderDesc(u.description):('★'.repeat(Math.max(1,u.stars||1))+'　'+esc(u.faction||'无')+'　阶 '+(u.tier||1)+'<br>攻 '+u.attack+'　血 '+Math.max(0,hp)+'/'+max+bulletInfoHtml(u)+counterInfo(u));return '<div class="'+cls+'" style="--c:'+(u.color||'#e53935')+'" onclick="choose(\''+w+'\','+i+')" oncontextmenu="rightClickCard(event,\''+w+'\','+i+')" data-side="'+w+'" data-slot="'+(i+1)+'"'+drag+drop+'><div class="name">'+esc(u.name)+'</div><div class="info">'+info+'</div>'+(skill?'':'<div class="hp"><i style="width:'+Math.max(0,hp/max*100)+'%"></i></div>'+badgeHtml(u))+'</div>'}
+const ins=pos=>'<div class="slot insert-slot" data-slot="+" ondragenter="allowBoardDrop(event,'+pos+')" ondragover="allowBoardDrop(event,'+pos+')" ondragleave="leaveDrop(event)" ondrop="dropToBoardInsert(event,'+pos+')"></div>';
+function renderBoard(w){if(s.phase==='战斗中')return s[w].map((u,i)=>u?card(u,w,i):'').join('');if(w==='board'){const u=compact(s.board);return ins(0)+u.map((x,i)=>card(x,w,i)+ins(i+1)).join('')}if(w==='enemy')return compact(s.enemy).map((u,i)=>card(u,w,i)).join('');return s[w].map((u,i)=>u?card(u,w,i):'<div class="slot" data-slot="'+(i+1)+'"></div>').join('')}
+function draw(){if(s.phase==='战斗中'){s.board=s.board.concat(Array(7).fill(null)).slice(0,7);s.enemy=s.enemy.concat(Array(7).fill(null)).slice(0,7)}else{s.board=pad(s.board);s.enemy=s.enemy.concat(Array(7).fill(null)).slice(0,7)}$('#enemy').innerHTML=renderBoard('enemy');$('#board').innerHTML=renderBoard('board');$('#bench').innerHTML=s.bench.map((u,i)=>'<div class="slot" data-slot="'+(i+1)+'" ondragenter="allowBenchDrop(event,'+i+')" ondragover="allowBenchDrop(event,'+i+')" ondragleave="leaveDrop(event)" ondrop="dropToBench(event,'+i+')">'+card(u,'bench',i)+'</div>').join('');while(s.shop.length<s.shopSlots)s.shop.push(null);$('#shop').innerHTML=s.shop.slice(0,s.shopSlots).map((u,i)=>'<div class="slot" data-slot="'+(i+1)+'" ondragenter="allowShopDrop(event)" ondragover="allowShopDrop(event)" ondragleave="leaveDrop(event)" ondrop="dropToShop(event)">'+card(u,'shop',i)+'</div>').join('');$('#shop').classList.toggle('locked',s.shopLocked);$('#refresh').textContent=s.freeRefreshes>0?'刷新（免费 ×'+s.freeRefreshes+'）':'刷新（1 金币）';$('#gold').textContent=s.gold;$('#hp').textContent=s.hp;$('#income').textContent=s.nextIncome;$('#round').textContent='第 '+s.round+'/14 轮';$('#phase').textContent=s.phase==='备战'?'备战 '+Math.max(0,s.prepSeconds)+'s':s.phase;$('#upgrade').textContent=s.shopLevel>=6?'商店满级':'升级商店（'+s.upgradeCost+' 金币｜Lv.'+s.shopLevel+'）';$('#lockShop').textContent=s.shopLocked?'取消锁定':'锁定商店';$('#fight').style.display=s.phase==='备战'?'inline-block':'none';$('#fight').disabled=s.busy||s.phase!=='备战';const sk=$('#skip');sk.style.display=s.phase==='战斗中'?'inline-block':'none';sk.textContent='跳过对战';sk.disabled=s.phase==='战斗中'?!s.skipBattleAvailable:true;sk.classList.toggle('skip-ready',s.phase==='战斗中'&&s.skipBattleAvailable);$('#sell').disabled=true}
+function skillLv(lv){return structuredClone(s.cards.find(c=>c.id==='ammo_pact_'+lv)||s.cards.find(c=>c.id==='ammo_pact_1'))}
+function fourSeasonsLv(lv){return structuredClone(s.cards.find(c=>c.id==='four_seasons_'+lv)||s.cards.find(c=>c.id==='four_seasons_1'))}
+function giftExchangeLv(lv){return structuredClone(s.cards.find(c=>c.id==='gift_exchange_'+lv)||s.cards.find(c=>c.id==='gift_exchange_1'))}
+function harmonyProsperityLv(lv){return structuredClone(s.cards.find(c=>c.id==='harmony_prosperity_'+lv)||s.cards.find(c=>c.id==='harmony_prosperity_1'))}
+function updateFertileSoilCard(sk){const value=Number(sk.base_effect_value??sk.effect_value??2)+Number(s.fertileSoilGrowth||0);sk.effect_value=value;sk.description='选择1个友方棋子，使其获得+'+value+'/+'+value+'，并永久提升【沃土予身】+2/+2';return sk}
+function fertileSoilLv(lv){const sk=structuredClone(s.cards.find(c=>c.id==='fertile_soil_'+lv)||s.cards.find(c=>c.id==='fertile_soil_1'));return sk?updateFertileSoilCard(sk):null}
+function advanceFertileSoil(){s.fertileSoilGrowth=Number(s.fertileSoilGrowth||0)+2;for(const sk of s.bench)if(sk?.effect==='fertile_soil')updateFertileSoilCard(sk)}
+function triggerClientMorale(u,source=''){if(source==='morale'||!u?.morale)return;const e=u.morale||{},a=Number(e.attack||0),h=Number(e.max_hp||e.hp||0);let targets=[u];if(e.type==='random_other_buff'){const candidates=compact(s.board).filter(x=>x&&x!==u);if(!candidates.length)return;targets=[candidates[Math.floor(Math.random()*candidates.length)]]}else if(e.type==='team_hp_buff'||e.type==='team_attack_buff'||e.type==='team_buff')targets=compact(s.board);else if(e.type==='faction_team_buff')targets=compact(s.board).filter(x=>x.faction===e.faction||x.faction==='任意');for(const target of targets){const old=Number(target.max_hp||1);if(a)target.attack=Number(target.attack||0)+a;if(h){target.max_hp=old+h;target.current_hp=Number(target.current_hp??old)+h}}log(u.name+' 触发战意：'+targets.length+' 个友方获得永久增益。','good')}
+function applyClientBuff(u,atk,hp,bs,source=''){const old=Number(u.max_hp||1);if(atk)u.attack=Number(u.attack||0)+Number(atk);if(hp){u.max_hp=old+Number(hp);u.current_hp=Number(u.current_hp??old)+Number(hp)}if(bs)u.bullet_strength=Number(u.bullet_strength||0)+Number(bs);if(Number(atk||0)>0||Number(hp||0)>0||Number(bs||0)>0)triggerClientMorale(u,source)}
+function applyGoldenOverrides(u){if(!u)return u;const g=u.golden_overrides||{};Object.assign(u,structuredClone(g));if(u.golden_description)u.description=u.golden_description;u.golden=true;u.current_hp=u.max_hp;return u}
+function baseUnitById(id){return s.cards.find(c=>c.card_type==='unit'&&c.id===id)}
+function extraStatSum(copies,orig,key){return copies.reduce((n,c)=>n+Math.max(0,Number(c?.[key]||0)-Number(orig?.[key]||0)),0)}
+function goldenCopy(base,copies=null){const orig=baseUnitById(base.id)||base;const u=structuredClone(orig);for(const k of ['current_hp','temporary_revive','revive_consumed_by_summon','summoned_by_phase','summoned_by_revival','summoned_by_legacy','bullet_strength_temp','death_feud_count'])delete u[k];applyGoldenOverrides(u);const cs=copies&&copies.length?copies:[base];u.attack=Number(orig.attack||0)*2+extraStatSum(cs,orig,'attack');u.max_hp=Number(orig.max_hp||1)*2+extraStatSum(cs,orig,'max_hp');u.current_hp=u.max_hp;u.bullet_strength=extraStatSum(cs,orig,'bullet_strength');u.bullet_damage=Number(u.bullet_damage||0)+extraStatSum(cs,orig,'bullet_damage');return u}
+function goldenRewardCard(){const x=Math.min(6,Number(s.shopLevel||1)+1);return {id:'triple_reward_'+Date.now()+'_'+Math.random().toString(36).slice(2),name:'紧急支援',card_type:'skill',faction:'金卡奖励',cost:x,effect_value:0,description:'拖至棋盘后，从三个互不相同的 '+x+' 星普通棋子中选择1个加入备战区。',color:'#ffd35a',effect:'discover_unit',discover_star:x,target_scope:'board',golden_skill:true,triple_reward_only:true,unit_id:null,stars:0}}
+function detailUnit(u,gold){return gold||u.golden?goldenCopy(u):u}
+function detailInner(u,gold){const du=detailUnit(u,gold),total=bp(du)+Number(du.bullet_damage||0),can=u.card_type==='unit'&&!u.golden&&(u.golden_description||u.golden_overrides);return '<h3>'+esc(du.name)+(du.golden?' · 金卡':'')+'</h3><div>'+(du.card_type==='skill'?'技能':'棋子')+' · '+esc(du.faction||'无')+' · 阶 '+(du.tier||du.cost||1)+'</div>'+(du.card_type==='unit'?'<div>攻 '+du.attack+' · 血 '+du.max_hp+(total>0?' · <span class="bullet-power">铳弹强度 +'+total+'</span>':'')+'</div>':'')+'<div>'+renderDesc(du.description||du.role||'')+'</div>'+mechanicDetails(du)+(du.card_type==='unit'?'<button class="gold-toggle" '+((gold||du.golden||!can)?'disabled':'onclick="event.stopPropagation();toggleGoldDetail()"')+'>金卡</button>':'')}
+function showCardDetail(ev,w,i){ev.preventDefault();const u=(w==='discover'||w==='sale-pick'||w==='select-target')?document.querySelector('.discover-pop')?._options?.[i]:s[w]?.[i];if(!u)return;document.querySelector('.detail-pop')?.remove();const p=document.createElement('div');const gold=!!u.golden;p.className='detail-pop'+(gold?' golden':'');p._unit=u;p._gold=gold;p.innerHTML=detailInner(u,gold);document.body.appendChild(p);p.style.left=Math.max(8,Math.min(ev.clientX+12,innerWidth-p.offsetWidth-8))+'px';p.style.top=Math.max(8,Math.min(ev.clientY+12,innerHeight-p.offsetHeight-8))+'px'}
+window.toggleGoldDetail=()=>{const p=document.querySelector('.detail-pop');if(!p||!p._unit)return;p._gold=!p._gold;p.classList.toggle('golden',p._gold);p.innerHTML=detailInner(p._unit,p._gold)};
+function transformUnitInto(source,target,asGolden){const keep={attack:source.attack,max_hp:source.max_hp,current_hp:source.current_hp??source.max_hp};let t=structuredClone(target);for(const k of ['current_hp','temporary_revive','revive_consumed_by_summon','summoned_by_phase','summoned_by_revival','summoned_by_legacy','bullet_strength_temp','death_feud_count'])delete t[k];if(asGolden)t=goldenCopy(t);Object.assign(source,t);source.attack=keep.attack;source.max_hp=keep.max_hp;source.current_hp=keep.current_hp;source.transformed_by='Muelsyse'}
+function openTransformSelect(unit,asGolden,remaining=1){document.querySelector('.discover-pop')?.remove();const boardOpts=compact(s.board).filter(x=>x&&x!==unit);const shopOpts=s.shop.filter(x=>x&&x.card_type==='unit');const opts=[...boardOpts,...shopOpts].filter((c,i,a)=>a.findIndex(x=>x.id===c.id&&x.golden===c.golden)===i);if(!opts.length){log('没有可供缪尔赛思选择的棋子。','bad');return}const pop=document.createElement('div');pop.className='discover-pop';pop.innerHTML='<div class="discover-box"><h3>选择缪尔赛思变形目标（棋盘/商店）</h3><div class="discover-options">'+opts.map((u,i)=>'<button class="discover-option" onclick="chooseTransform('+i+')">'+card(asGolden?goldenCopy(u):u,'transform',i)+'</button>').join('')+'</div></div>';pop._options=opts;pop._unit=unit;pop._asGolden=asGolden;pop._remaining=Math.max(1,Number(remaining||1));document.body.appendChild(pop)}
+window.chooseTransform=(idx)=>{const pop=document.querySelector('.discover-pop');if(!pop)return;const target=pop._options[idx],unit=pop._unit,asGolden=!!pop._asGolden,remaining=Number(pop._remaining||1);if(!target||!unit)return;const old=unit.name;transformUnitInto(unit,target,asGolden);pop.remove();log(old+' 变形为 '+unit.name+(unit.golden?'（金色版）':'')+'，并保留原属性。','good');tryCombineTriples();draw();if(remaining>1)setTimeout(()=>openTransformSelect(unit,asGolden,remaining-1),0)}
+function setGuard(u,value){if(value){u.guard=true;u.mechanics=[...new Set([...(u.mechanics||[]),'guard'])]}else{delete u.guard;u.mechanics=(u.mechanics||[]).filter(x=>x!=='guard')}}
+function openDeployTargetSelect(source,effect,times){document.querySelector('.discover-pop')?.remove();const opts=compact(s.board);if(!opts.length){log('棋盘上没有可选择的棋子。','bad');return}const pop=document.createElement('div');pop.className='discover-pop';pop.innerHTML='<div class="discover-box"><h3>'+esc(source.name)+'：选择1个棋盘棋子</h3><div class="discover-options">'+opts.map((x,i)=>'<button class="discover-option" onclick="chooseDeployTarget('+i+')">'+card(x,'select-target',i)+'</button>').join('')+'</div></div>';pop._options=opts;pop._source=source;pop._effect=effect;pop._times=times;document.body.appendChild(pop)}
+window.chooseDeployTarget=idx=>{const pop=document.querySelector('.discover-pop'),target=pop?._options?.[idx],source=pop?._source,effect=pop?._effect,times=Math.max(1,Number(pop?._times||1));if(!target||!source||!effect)return;document.querySelector('.detail-pop')?.remove();pop.remove();if(effect.type==='select_buff_toggle_guard'){const hadGuard=hasMark(target,'guard');for(let n=0;n<times;n++)applyClientBuff(target,effect.attack||0,effect.max_hp||effect.hp||0,effect.bullet_strength||0);setGuard(target,!hadGuard);log(source.name+' 上场：'+target.name+' 获得 '+times+' 次属性增益，'+(hadGuard?'移除':'获得')+'嘲讽。','good')}else if(effect.type==='select_guard_then_buff_guards'){setGuard(target,true);let applied=0;for(let n=0;n<times;n++)for(const ally of compact(s.board))if(hasMark(ally,'guard')){applyClientBuff(ally,effect.attack||0,effect.max_hp||effect.hp||0,effect.bullet_strength||0);applied++}log(source.name+' 上场：'+target.name+' 获得嘲讽，并对嘲讽友方施加 '+applied+' 次属性增益。','good')}draw()};
+function onDeployTriggerCount(){return Math.max(1,...compact(s.board).map(x=>Number(x?.on_deploy_multiplier||1)))}
+function synergyMatches(effect,deployed){const faction=effect?.faction||'';return faction==='任意'||deployed?.faction==='任意'||deployed?.faction===faction}
+function triggerSynergies(deployed){for(const source of compact(s.board)){const effect=source?.synergy||{};if(source===deployed||!effect.type||!synergyMatches(effect,deployed))continue;const reps=Math.max(1,Number(effect.repetitions||1));let applications=0;for(let n=0;n<reps;n++)for(const ally of compact(s.board)){applyClientBuff(ally,effect.attack||0,effect.max_hp||effect.hp||0,effect.bullet_strength||0,'synergy');applications++}log(source.name+' 协同（'+(effect.faction||'任意')+'）触发：施加 '+applications+' 次增益。','good')}}
+function onDeploy(u){triggerSynergies(u);if(u.golden){const i=emptyBench(),sk=goldenRewardCard();if(i>=0){s.bench[i]=sk;log(u.name+' 金卡上场：获得【'+sk.name+'】。','good')}else log('备战区已满，无法获得金卡奖励。','bad')}const eff=u.on_deploy||{},times=onDeployTriggerCount();if(eff.type==='transform_select'){openTransformSelect(u,!!eff.target_golden,1);return}if(eff.type==='select_buff_toggle_guard'||eff.type==='select_guard_then_buff_guards'){openDeployTargetSelect(u,eff,times);return}if(eff.type==='gain_ammo_pact'){const cnt=Math.max(1,Number(eff.count||1))*times;let got=0,last=null;for(let n=0;n<cnt;n++){const i=emptyBench();if(i<0){log('备战区已满，无法继续获得【铳弹协约】。','bad');break}const sk=skillLv(s.shopLevel);s.bench[i]=sk;last=sk;got++}if(got)log(u.name+' 上场：获得 '+got+' 张【'+(last?last.name:'铳弹协约')+'】。','good')}else if(eff.type==='gain_four_seasons'){const cnt=Math.max(1,Number(eff.count||1))*times;let got=0,last=null;for(let n=0;n<cnt;n++){const i=emptyBench();if(i<0){log('备战区已满，无法继续获得【天有四时】。','bad');break}const sk=fourSeasonsLv(s.shopLevel);if(!sk)break;s.bench[i]=sk;last=sk;got++}if(got)log(u.name+' 上场：获得 '+got+' 张【'+last.name+'】。','good')}else if(eff.type==='gain_random_skill_current_level'){const cnt=Math.max(1,Number(eff.count||1))*times,pool=s.cards.filter(c=>c.card_type==='skill'&&Number(s.shopLevel)>=Number(c.min_shop_level||1)&&(Number(c.cost||0)===Number(s.shopLevel)||(c.available_from_unlock&&Number(s.shopLevel)>=Number(c.min_shop_level||1))));let got=0;for(let n=0;n<cnt;n++){const i=emptyBench();if(i<0){log('备战区已满，无法继续获得随机技能卡。','bad');break}if(!pool.length){log('当前商店等级没有可获得的技能卡。','bad');break}s.bench[i]=structuredClone(pool[Math.floor(Math.random()*pool.length)]);got++}if(got)log(u.name+' 上场：随机获得 '+got+' 张 '+s.shopLevel+' 星技能卡。','good')}else if(eff.type==='gain_harmony_prosperity'){const cnt=Math.max(1,Number(eff.count||1))*times;let got=0,last=null;for(let n=0;n<cnt;n++){const i=emptyBench();if(i<0){log('备战区已满，无法继续获得【和气生财】。','bad');break}const sk=harmonyProsperityLv(s.shopLevel);if(!sk)break;s.bench[i]=sk;last=sk;got++}if(got)log(u.name+' 上场：获得 '+got+' 张【'+last.name+'】。','good')}else if(eff.type==='gain_skill_card'){const template=s.cards.find(c=>c.id===eff.card_id),cnt=Math.max(1,Number(eff.count||1))*times;let got=0;for(let n=0;n<cnt;n++){const i=emptyBench();if(i<0){log('备战区已满，无法继续获得技能卡。','bad');break}if(!template)break;s.bench[i]=structuredClone(template);got++}if(got)log(u.name+' 上场：获得 '+got+' 张【'+template.name+'】。','good')}else if(eff.type==='team_buff'){const a=compact(s.board);let n=0;for(let repeat=0;repeat<times;repeat++)for(const ally of a){if(eff.exclude_self&&ally===u)continue;applyClientBuff(ally,eff.attack||0,eff.max_hp||eff.hp||0,eff.bullet_strength||0);n++}log(u.name+' 上场效果触发 '+times+' 次：共施加 '+n+' 次增益。','good')}}
+function grantFourSeasons(source,count,mechanic='招募'){let got=0,last=null;for(let n=0;n<Math.max(0,Number(count||0));n++){const i=emptyBench();if(i<0){log('备战区已满，无法继续获得【天有四时】。','bad');break}const sk=fourSeasonsLv(s.shopLevel);if(!sk)break;s.bench[i]=sk;last=sk;got++}if(got)log(source+' '+mechanic+'：获得 '+got+' 张【'+last.name+'】。','good')}
+function recordGoldSpent(amount){const spent=Math.max(0,Number(amount||0));if(!spent)return;for(const u of compact(s.board)){const effect=u.gold_spend||{};if(effect.type!=='gain_four_seasons')continue;const threshold=Math.max(1,Number(effect.threshold||7)),total=Number(u.gold_spent_count||0)+spent,triggers=Math.floor(total/threshold);u.gold_spent_count=total%threshold;if(triggers)grantFourSeasons(u.name,triggers*Math.max(1,Number(effect.count||1)),'累计')}draw()}
+function grantFertileSoil(source,count,mechanic='招募'){let got=0,last=null;for(let n=0;n<Math.max(0,Number(count||0));n++){const i=emptyBench();if(i<0){log('备战区已满，无法继续获得【沃土予身】。','bad');break}const sk=fertileSoilLv(s.shopLevel);if(!sk)break;s.bench[i]=sk;last=sk;got++}if(got)log(source+' '+mechanic+'：获得 '+got+' 张【'+last.name+'】。','good')}
+function triggerRecruit(u){const e=u?.recruit||{};if(e.type==='gain_four_seasons')grantFourSeasons(u.name,Math.max(1,Number(e.count||1)));else if(e.type==='gain_fertile_soil')grantFertileSoil(u.name,Math.max(1,Number(e.count||1)))}
+function triggerPlayerSupports(){for(const u of compact(s.board)){const e=u?.support||{};if(!e||!Object.keys(e).length)continue;const threshold=Math.max(1,Number(e.threshold||1));u.support_count=Number(u.support_count||0)+1;const times=Math.floor(u.support_count/threshold);u.support_count%=threshold;if(e.type==='different_faction_buff'){for(let n=0;n<times;n++)for(let r=0;r<Math.max(1,Number(e.repetitions||1));r++)for(const target of harmonyTargets())applyClientBuff(target,Number(e.attack||0),Number(e.max_hp||e.hp||0),Number(e.bullet_strength||0),'support')}else for(let n=0;n<times;n++)applyClientBuff(u,Number(e.attack||0),Number(e.max_hp||e.hp||0),Number(e.bullet_strength||0),'support')}}
+function collectMergePieces(){const a=[];s.bench.forEach((u,i)=>{if(u&&u.card_type==='unit'&&(!u.golden||u.id==='Phantom'))a.push({w:'bench',i,u})});s.board.forEach((u,i)=>{if(u&&u.card_type==='unit'&&(!u.golden||u.id==='Phantom'))a.push({w:'board',i,u})});return a}
+function phantomCanReplace(piece,target){if(piece.u.id!=='Phantom'||target.id==='Phantom')return false;const max=Number(piece.u.wildcard_merge_max_tier||(piece.u.golden?6:3));return Number(target.stars||target.tier||0)<=max&&!(piece.u.wildcard_exclude_ids||[]).includes(target.id)}
+function findTripleMerge(){const pieces=collectMergePieces(),groups={};for(const p of pieces)if(!p.u.golden)(groups[p.u.id]??=[]).push(p);const exact=Object.values(groups).find(v=>v.length>=3);if(exact)return {base:exact[0].u,occ:exact.slice(0,3)};const targets=[...new Map(pieces.filter(p=>!p.u.golden&&p.u.id!=='Phantom').map(p=>[p.u.id,p.u])).values()];const plans=targets.map(base=>{const own=pieces.filter(p=>!p.u.golden&&p.u.id===base.id),wild=pieces.filter(p=>phantomCanReplace(p,base));return {base,own,wild,needed:Math.max(0,3-own.length)}}).filter(p=>p.own.length>=1&&p.own.length+p.wild.length>=3).sort((a,b)=>a.needed-b.needed||Number(a.base.tier||0)-Number(b.base.tier||0));if(!plans.length)return null;const p=plans[0],own=p.own.slice(0,3),occ=own.concat(p.wild.slice(0,3-own.length));return {base:p.base,occ}}
+function tryCombineTriples(){let ch=false;while(true){const plan=findTripleMerge();if(!plan)break;const {base,occ}=plan;if(emptyBench()<0&&!occ.some(o=>o.w==='bench')){log('备战区已满，无法放入合成金卡。','bad');break}const orig=baseUnitById(base.id)||base,copies=occ.map(o=>o.u.id===base.id?o.u:orig);occ.forEach(o=>{s[o.w][o.i]=null});s.board=pad(s.board);const i=emptyBench();s.bench[i]=goldenCopy(base,copies);log('三连合成：'+base.name+' 成为金卡，已回到备战区。','good');ch=true}return ch}
+function readDrag(ev){if(s.dragging)return s.dragging;try{return JSON.parse(ev.dataTransfer.getData('text/plain')||'null')}catch{return null}}
+function clearDrop(){document.querySelectorAll('.drop-target,.drop-blocked').forEach(e=>e.classList.remove('drop-target','drop-blocked'))}
+window.dragCard=(ev,type,index)=>{s.dragging={type,index};ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',JSON.stringify(s.dragging));ev.currentTarget.classList.add('dragging')};
+window.dragEnd=ev=>{ev.currentTarget.classList.remove('dragging');setTimeout(()=>{s.dragging=null;clearDrop()},0)};window.leaveDrop=ev=>ev.currentTarget.classList.remove('drop-target','drop-blocked');
+window.allowBoardDrop=(ev,pos)=>{if(!readDrag(ev))return;ev.preventDefault();ev.dataTransfer.dropEffect='move';ev.currentTarget.classList.add('drop-target')};
+window.dropToBoardInsert=async(ev,pos)=>{const d=readDrag(ev);if(!d)return;ev.preventDefault();ev.stopPropagation?.();const sk=d.type==='bench'?s.bench[d.index]:null;if(d.type==='bench'&&sk?.card_type==='skill'){await useBenchSkill(d.index,true)}else if(d.type==='bench'&&s.bench[d.index]?.card_type==='unit'){if(compact(s.board).length>=7){log('棋盘已满，无法上场棋子。','bad');clearDrop();draw();return}const u=s.bench[d.index];s.bench[d.index]=null;const a=compact(s.board);a.splice(Math.min(pos,a.length),0,u);s.board=pad(a);onDeploy(u);tryCombineTriples()}else if(d.type==='board'){const a=compact(s.board),u=a.splice(d.index,1)[0];a.splice(Math.min(pos,a.length),0,u);s.board=pad(a);tryCombineTriples()}clearDrop();draw()};
+async function buyShopIndex(i,slot=emptyBench()){if(slot<0)return log('备战区已满','bad');const c=s.shop[i];if(!c||c.card_type!=='unit')return;if(s.gold<UNIT_CARD_COST)return log('金币不足','bad');try{const r=await api('/api/buy',{card_id:c.id,bypass_shop_level:!!c.shop_limit_bypass});syncPlayer(r);s.bench[slot]=structuredClone(c);s.shop[i]=null;recordGoldSpent(r.spent||UNIT_CARD_COST);log('购入 '+c.name,'good');triggerRecruit(s.bench[slot]);tryCombineTriples()}catch(e){log(e.message,'bad')}draw()}
 
-
-async function animateBattle(result){
-  for(const e of result.events)await animateAttackEvent(e);
-}
-
-async function fight(){
-  if(s.busy||s.phase!=='\u5907\u6218')return;
-  clearInterval(s.timer);
-  s.busy=true;
-  s.phase='\u6218\u6597\u4e2d';
-  s.board.forEach(u=>{if(u)u.current_hp=u.max_hp});
-  const savedBoard=s.board.map(u=>u?{...u,current_hp:u.max_hp}:null);
-  if(!s.enemy.some(Boolean))s.enemy=await api('/api/enemy',{round:s.round});
-  s.enemy.forEach(u=>{if(u)u.current_hp=u.max_hp});
-  draw();
-  const battleRound=s.round;
-  const result=await api('/api/battle',{left:s.board,right:s.enemy,round:battleRound});
-  await animateBattle(result);
-  s.board=result.left;
-  s.enemy=result.right;
-  syncPlayer(result);
-  s.shop=await api('/api/shop');
-  log('\u6218\u6597\u7ed3\u675f\uff0c\u5546\u5e97\u5df2\u81ea\u52a8\u5237\u65b0\u3002','good');
-  draw();
-  if(result.winner==='left')log(`\u7b2c ${battleRound}/14 \u8f6e\u80dc\u5229\uff0c\u80dc\u5229\u5956\u52b1 ${result.victory_bonus} \u91d1\u5e01\uff0c\u8fdb\u5165\u4e0b\u56de\u5408\u989d\u5916\u83b7\u5f97 ${result.income} \u91d1\u5e01\u3002`,'good');
-  else log(`\u7b2c ${battleRound}/14 \u8f6e\u6218\u8d25\uff0cAI \u5269\u4f59\u661f\u7ea7 ${result.remaining_stars}\uff0c\u5931\u53bb ${result.loss_damage} \u751f\u547d\uff1b\u8fdb\u5165\u4e0b\u56de\u5408\u83b7\u5f97 ${result.income} \u91d1\u5e01\u3002`,'bad');
-  await sleep(1000);
-  s.board=savedBoard;
-  s.busy=false;
-  startPrep();
-}
-
-async function start(){
-  const p=await api('/api/player');
-  syncPlayer(p);
-  s.shop=await api('/api/shop');
-  log('\u7b2c 1 \u56de\u5408\u521d\u59cb 10 \u91d1\u5e01\uff1b\u672a\u7528\u5b8c\u7684\u91d1\u5e01\u4f1a\u7ee7\u627f\uff0c\u6bcf\u8f6e\u5f00\u59cb\u989d\u5916\u91d1\u5e01\u9012\u589e\uff1b\u80dc\u5229\u989d\u5916 +5 \u91d1\u5e01\u3002\u5931\u8d25\u6263\u8840\u7b49\u4e8e AI \u5b58\u6d3b\u68cb\u5b50\u7684\u661f\u7ea7\u603b\u548c\u3002');
-  startPrep();
-}
-
-$('#refresh').onclick=refresh;
-$('#upgrade').onclick=upgradeShop;
-$('#fight').onclick=fight;
-$('#skip').onclick=()=>{log('\u5df2\u8df3\u8fc7\u5907\u6218\uff0c\u76f4\u63a5\u5f00\u59cb\u6218\u6597\u3002');fight()};
-$('#sell').onclick=()=>{if(s.selected!==null)sellCard('bench',s.selected)};
-$('#reset').onclick=async()=>{try{await api('/api/reset',{});location.reload()}catch(e){log(e.message,'bad')}};
-start().catch(e=>log('\u8bf7\u5148\u8fd0\u884c python server.py','bad'));
+window.allowBenchAreaDrop=ev=>{const d=readDrag(ev);if(!d)return;ev.preventDefault();ev.dataTransfer.dropEffect='move';ev.currentTarget.classList.add(d.type==='shop'?'drop-target':'drop-blocked')};
+window.dropToBenchArea=async ev=>{const d=readDrag(ev);if(!d)return;ev.preventDefault();ev.stopPropagation?.();if(d.type==='shop')await buyShopIndex(d.index,emptyBench());clearDrop();draw()};
+window.allowBenchDrop=(ev,i)=>{const d=readDrag(ev);if(!d)return;ev.preventDefault();ev.dataTransfer.dropEffect='move';ev.currentTarget.classList.add(d.type==='shop'&&!s.bench[i]?'drop-target':'drop-blocked')};
+window.dropToBench=async(ev,i)=>{const d=readDrag(ev);if(!d)return;ev.preventDefault();ev.stopPropagation?.();if(d.type==='shop'&&!s.bench[i])await buyShopIndex(d.index,i);clearDrop();draw()};
+window.allowShopDrop=ev=>{const d=readDrag(ev);if(!d)return;ev.preventDefault();const sk=d.type==='bench'?s.bench[d.index]:null,ok=(d.type==='bench'&&(sk?.card_type==='unit'||sk?.effect==='upgrade_shop_unit_transform'||sk?.effect==='angel_blessing'))||d.type==='board';ev.dataTransfer.dropEffect='move';ev.currentTarget.classList.add(ok?'drop-target':'drop-blocked')};
+window.dropToShop=async ev=>{const d=readDrag(ev);if(!d)return;ev.preventDefault();ev.stopPropagation?.();const sk=d.type==='bench'?s.bench[d.index]:null,targetSlot=Math.max(0,Number(ev.currentTarget?.dataset?.slot||1)-1);if(sk?.effect==='upgrade_shop_unit_transform')await useShopTransformSkill(d.index,targetSlot);else if(sk?.effect==='angel_blessing')await useAngelBlessing(d.index,targetSlot);else await sellCard(d.type,d.index);clearDrop();draw()};
+async function useShopTransformSkill(skillIndex,shopIndex){const sk=s.bench[skillIndex],target=s.shop[shopIndex];if(!sk||sk.effect!=='upgrade_shop_unit_transform'||!target?.card_type)return log('请将技能卡拖至一个商店棋子。','bad');const currentTier=Number(target.stars||target.tier||1);if(currentTier>=6)return log('6星棋子无法继续提升星级。','bad');const nextTier=currentTier+1,pool=s.cards.filter(c=>c.card_type==='unit'&&Number(c.stars||c.tier||0)===nextTier);if(!pool.length)return log('没有可变成的更高星棋子。','bad');const replacement=structuredClone(pool[Math.floor(Math.random()*pool.length)]),atk=Number(target.attack||0)+Number(sk.transform_buff||sk.effect_value||0),hp=Number(target.max_hp||1)+Number(sk.transform_buff||sk.effect_value||0);replacement.attack=atk;replacement.max_hp=hp;replacement.current_hp=hp;s.shop[shopIndex]=replacement;s.bench[skillIndex]=null;log(sk.name+'：商店棋子变为 '+replacement.name+'，并保留强化后的属性 '+atk+'/'+hp+'。','good');triggerPlayerSupports();draw()}
+function chooseBlessingStat(target){return new Promise(resolve=>{document.querySelector('.discover-pop')?.remove();const pop=document.createElement('div');pop.className='discover-pop';pop.innerHTML='<div class="discover-box"><h3>天使的祝福：选择 '+esc(target.name)+' 翻倍的属性</h3><div class="discover-options"><button class="btn gold" onclick="chooseBlessingPick(\'attack\')">攻击翻倍</button><button class="btn gold" onclick="chooseBlessingPick(\'hp\')">生命翻倍</button></div></div>';pop._resolve=resolve;document.body.appendChild(pop)})}
+window.chooseBlessingPick=kind=>{const pop=document.querySelector('.discover-pop'),resolve=pop?._resolve;if(!resolve)return;pop.remove();resolve(kind)};
+async function useAngelBlessing(skillIndex,shopIndex){const sk=s.bench[skillIndex],target=s.shop[shopIndex];if(!sk||sk.effect!=='angel_blessing'||target?.card_type!=='unit')return log('请将技能卡拖至一个商店棋子。','bad');const kind=await chooseBlessingStat(target);if(kind==='attack')target.attack=Number(target.attack||0)*2;else if(kind==='hp'){const oldMax=Number(target.max_hp||1),oldHp=Number(target.current_hp??oldMax);target.max_hp=oldMax*2;target.current_hp=oldHp*2}else return;s.bench[skillIndex]=null;log(sk.name+'：'+target.name+' 的'+(kind==='attack'?'攻击':'生命')+'翻倍。','good');triggerPlayerSupports();draw()}
+function chooseThree(title,options){return new Promise(resolve=>{document.querySelector('.discover-pop')?.remove();const opts=options.slice(0,3);if(!opts.length)return resolve(null);const pop=document.createElement('div');pop.className='discover-pop';pop.innerHTML='<div class="discover-box"><h3>'+esc(title)+'</h3><div class="discover-options">'+opts.map((x,i)=>'<button class="discover-option" onclick="chooseSalePick('+i+')">'+card(x,'sale-pick',i)+'</button>').join('')+'</div></div>';pop._options=opts;pop._resolve=resolve;document.body.appendChild(pop)})}
+window.chooseSalePick=idx=>{const pop=document.querySelector('.discover-pop'),u=pop?._options?.[idx],resolve=pop?._resolve;if(!u||!resolve)return;document.querySelector('.detail-pop')?.remove();pop.remove();resolve(structuredClone(u))};
+function enemyPickOptions(){return shuffle(compact(s.enemy).filter(x=>x?.card_type==='unit'&&x.id!=='Ines'&&Number(x.stars||x.tier||0)<=Number(s.shopLevel)).map(x=>structuredClone(baseUnitById(x.id)||x))).slice(0,3)}
+function shopTierPickOptions(){return shuffle(s.cards.filter(x=>x.card_type==='unit'&&Number(x.stars||x.tier||0)===Number(s.shopLevel)).map(x=>structuredClone(x))).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i).slice(0,3)}
+function gainSalePick(u,source){const i=emptyBench();if(i<0){log('备战区已满，无法加入挑选的棋子。','bad');return false}s.bench[i]=u;log(source+' 售出：通过挑选获得 '+u.name+'。','good');tryCombineTriples();draw();return true}
+async function triggerSale(u){const e=u?.sell||{};if(e.type==='gift_exchange_and_upgrade_shop'){let got=0;for(let n=0;n<Math.max(1,Number(e.count||1));n++){const i=emptyBench(),sk=giftExchangeLv(s.shopLevel);if(i<0||!sk){log('备战区已满，无法继续获得【礼尚往来】。','bad');break}s.bench[i]=sk;got++}s.shop=s.shop.map(card=>{if(!card||card.card_type!=='unit')return card;const tier=Math.min(6,Number(card.stars||card.tier||1)+1),pool=s.cards.filter(x=>x.card_type==='unit'&&Number(x.stars||x.tier||0)===tier);if(!pool.length)return card;const replacement=structuredClone(pool[Math.floor(Math.random()*pool.length)]);replacement.shop_limit_bypass=true;return replacement});if(got)log(u.name+' 售出：获得 '+got+' 张【礼尚往来.'+s.shopLevel+'】，商店棋子星级提升。','good');return}if(e.type!=='pick_enemy'&&e.type!=='pick_shop_tier_add_self_stats')return;const count=Math.max(1,Number(e.count||1));for(let n=0;n<count;n++){if(emptyBench()<0){log('备战区已满，无法继续挑选棋子。','bad');break}const enemy=e.type==='pick_enemy',opts=enemy?enemyPickOptions():shopTierPickOptions();if(!opts.length){log(enemy?'对手没有可供伊内丝挑选的棋子。':'当前商店等级没有可供赫德雷挑选的棋子。','bad');break}const picked=await chooseThree(u.name+'：挑选（'+(n+1)+'/'+count+'）',opts);if(!picked)break;if(!enemy){const addAtk=Number(u.attack||0),addHp=Number(u.max_hp||0),oldHp=Number(picked.max_hp||1);picked.attack=Number(picked.attack||0)+addAtk;picked.max_hp=oldHp+addHp;picked.current_hp=picked.max_hp}if(!gainSalePick(picked,u.name))break}}
+async function sellCard(w,i){let u=null;if(w==='bench')u=s.bench[i];else if(w==='board')u=compact(s.board)[i];if(!u||u.card_type!=='unit')return;try{const r=await api('/api/sell',{card_id:u.id});syncPlayer(r);if(w==='bench')s.bench[i]=null;else{const a=compact(s.board);a.splice(i,1);s.board=pad(a)}await triggerSale(u);log('出售 '+u.name+'：返还 '+(r.refund||1)+' 金币。','good')}catch(e){log(e.message,'bad')}}
+window.allowUnitSkillDrop=(ev,i)=>{const d=readDrag(ev);if(!d)return;ev.preventDefault();const sk=d.type==='bench'?s.bench[d.index]:null,ok=sk?.card_type==='skill'&&['single_unit','board_unit'].includes(sk.target_scope);ev.dataTransfer.dropEffect='move';ev.currentTarget.classList.add(ok?'drop-target':'drop-blocked')};
+window.dropSkillToUnit=async(ev,i)=>{const d=readDrag(ev);if(!d)return;ev.preventDefault();ev.stopPropagation?.();const sk=s.bench[d.index],u=compact(s.board)[i];if(!sk||sk.card_type!=='skill'||!u)return;if(!['single_unit','board_unit'].includes(sk.target_scope)){log('该技能卡不能对棋盘棋子使用。','bad');clearDrop();return}if(sk.effect==='gain_gold'||sk.effect==='discover_unit'||sk.effect==='discover_skill'){await useBenchSkill(d.index,true);clearDrop();draw();return}if(sk.effect==='sacrifice_share_stats'){const attackGain=Math.ceil(Math.max(0,Number(u.attack||0))*Number(sk.share_ratio||0.2)),hpGain=Math.ceil(Math.max(0,Number(u.max_hp||0))*Number(sk.share_ratio||0.2));try{const r=await api('/api/gain_gold',{amount:Number(sk.gold||1)}),a=compact(s.board);a.splice(i,1);const targets=a.slice(0,Math.max(0,Number(sk.share_count||4)));s.board=pad(a);s.bench[d.index]=null;syncPlayer(r);for(const ally of targets)applyClientBuff(ally,attackGain,hpGain,0,'skill');log(sk.name+'：移除 '+u.name+'，获得 '+Number(r.gained||sk.gold||1)+' 金币，并使 '+targets.length+' 个友方棋子获得 +'+attackGain+'/+'+hpGain+'（20%向上取整）。','good');triggerPlayerSupports()}catch(e){log(e.message,'bad')}clearDrop();draw();return}if(sk.effect==='self_repair'){const tier=Number(u.stars||u.tier||0),options=shuffle(s.cards.filter(c=>c.card_type==='unit'&&c.id!==u.id&&Number(c.stars||c.tier||0)===tier).map(c=>structuredClone(c))).filter((c,n,a)=>a.findIndex(x=>x.id===c.id)===n).slice(0,3);if(!options.length){log('没有可挑选的同星级其他棋子。','bad');clearDrop();return}const chosen=await chooseThree('自我修复：挑选1个 '+tier+' 星其他棋子',options);if(!chosen)return;const a=compact(s.board);a.splice(i,1);s.board=pad(a);s.bench[d.index]=chosen;triggerRecruit(chosen);log(sk.name+'：移除 '+u.name+'，获得 '+chosen.name+'。','good');triggerPlayerSupports();tryCombineTriples();clearDrop();draw();return}if(sk.effect==='emergency_defibrillation'){const base=baseUnitById(u.id)||u,copy=u.golden?goldenCopy(base):structuredClone(base);copy.current_hp=copy.max_hp;const a=compact(s.board);a.splice(i,1);s.board=pad(a);s.bench[d.index]=copy;log(sk.name+'：移除 '+u.name+'，获得其原始复制。','good');triggerPlayerSupports();tryCombineTriples();clearDrop();draw();return}if(sk.effect==='remove_for_gold'){try{const r=await api('/api/gain_gold',{amount:Number(sk.gold||3)}),a=compact(s.board);a.splice(i,1);s.board=pad(a);s.bench[d.index]=null;syncPlayer(r);log(sk.name+'：移除 '+u.name+'，获得 '+Number(r.gained||sk.gold||3)+' 枚金币。','good');triggerPlayerSupports()}catch(e){log(e.message,'bad')}clearDrop();draw();return}const value=Number(sk.effect_value||0);if(sk.effect==='adjacent_team_buff'){const units=compact(s.board),targets=[i-1,i,i+1].filter(n=>n>=0&&n<units.length).map(n=>units[n]);for(const ally of targets)applyClientBuff(ally,value,value,0,'skill');s.bench[d.index]=null;log(sk.name+'：'+targets.map(x=>x.name).join('、')+' 获得 +'+value+'/+'+value+'。','good');triggerPlayerSupports();clearDrop();draw();return}if(sk.effect==='tactical_armor'){applyClientBuff(u,Number(sk.tactical_attack||value),Number(sk.tactical_hp||value),0,'skill');setGuard(u,true);s.bench[d.index]=null;log(sk.name+'：'+u.name+' 获得 +'+Number(sk.tactical_attack||value)+'/+'+Number(sk.tactical_hp||value)+' 和嘲讽。','good');triggerPlayerSupports();clearDrop();draw();return}if(sk.effect==='grant_injury_growth'){u.injury_growth={amount:Number(sk.injury_growth||value),limit:Number(sk.injury_growth_limit||4)};u.injury_growth_count=Number(u.injury_growth_count||0);s.bench[d.index]=null;log(sk.name+'：'+u.name+' 获得【受伤时：永久获得+'+Number(sk.injury_growth||value)+'/+'+Number(sk.injury_growth||value)+'（最多4次）】。','good');triggerPlayerSupports();clearDrop();draw();return}if(sk.effect==='fertile_soil'){applyClientBuff(u,value,value,0,'skill');s.bench[d.index]=null;advanceFertileSoil();log(sk.name+'：'+u.name+' 获得 +'+value+'/+'+value+'；此后【沃土予身】永久提高 +2/+2。','good');triggerPlayerSupports();clearDrop();draw();return}if(sk.effect==='gift_exchange'){const penalty=Number(sk.stat_penalty||0),oldMax=Number(u.max_hp||1);u.attack=Math.max(0,Number(u.attack||0)-penalty);u.max_hp=Math.max(1,oldMax-penalty);u.current_hp=Math.max(1,Math.min(Number(u.current_hp??oldMax)-penalty,u.max_hp));u.permanent_logistics_attack=Number(u.permanent_logistics_attack||0)+Number(sk.permanent_logistics_attack||0);u.permanent_logistics_hp=Number(u.permanent_logistics_hp||0)+Number(sk.permanent_logistics_hp||0);s.bench[d.index]=null;log(sk.name+'：'+u.name+' -'+penalty+'/-'+penalty+'，并永久获得【后勤：自身获得+'+Number(sk.permanent_logistics_attack||0)+'/+'+Number(sk.permanent_logistics_hp||0)+'】。','good');triggerPlayerSupports();clearDrop();draw();return}applyClientBuff(u,value,value,Number(sk.bullet_strength||0),'skill');if(sk.effect==='four_seasons'){u.temporary_logistics_hp=Number(u.temporary_logistics_hp||0)+Number(sk.temporary_logistics_hp||value);log(sk.name+'：'+u.name+' 获得 +'+value+'/+'+value+'，并获得1回合【后勤：自身获得+'+Number(sk.temporary_logistics_hp||value)+'生命】。','good')}else log(sk.name+'：'+u.name+' 获得 +'+value+'/+'+value+'，铳弹强度 +'+Number(sk.bullet_strength||0)+'。','good');s.bench[d.index]=null;triggerPlayerSupports();clearDrop();draw()};
+window.allowBoardAreaSkillDrop=ev=>{const d=readDrag(ev);if(!d)return;const sk=d.type==='bench'?s.bench[d.index]:null;if(!sk||sk.card_type!=='skill'||!(sk.effect==='gain_gold'||sk.id==='economic_aid'||sk.effect==='discover_unit'||sk.effect==='discover_unit_upto'||sk.effect==='discover_skill'||sk.effect==='harmony_prosperity'||sk.effect==='next_round_gold'||sk.effect==='reduce_upgrade_cost'||sk.effect==='take_random_shop_unit'||sk.effect==='team_temporary_logistics'||sk.effect==='gain_random_unit_upto'||sk.effect==='battle_wager'||sk.effect==='random_repeated_buff'||sk.effect==='edge_team_buff'||sk.effect==='discover_unit_mechanic'||sk.effect==='team_temporary_initiative_buff'||sk.effect==='team_permanent_buff'||sk.effect==='grant_free_refreshes'))return;ev.preventDefault();ev.dataTransfer.dropEffect='move';ev.currentTarget.classList.add('drop-target')};
+window.dropSkillToBoardArea=async ev=>{const d=readDrag(ev);if(!d)return;const sk=d.type==='bench'?s.bench[d.index]:null;if(!sk||sk.card_type!=='skill'||!(sk.effect==='gain_gold'||sk.id==='economic_aid'||sk.effect==='discover_unit'||sk.effect==='discover_unit_upto'||sk.effect==='discover_skill'||sk.effect==='harmony_prosperity'||sk.effect==='next_round_gold'||sk.effect==='reduce_upgrade_cost'||sk.effect==='take_random_shop_unit'||sk.effect==='team_temporary_logistics'||sk.effect==='gain_random_unit_upto'||sk.effect==='battle_wager'||sk.effect==='random_repeated_buff'||sk.effect==='edge_team_buff'||sk.effect==='discover_unit_mechanic'||sk.effect==='team_temporary_initiative_buff'||sk.effect==='team_permanent_buff'||sk.effect==='grant_free_refreshes'))return;ev.preventDefault();ev.stopPropagation?.();await useBenchSkill(d.index,true);clearDrop();draw()};
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function openDiscover(skillIndex,star){document.querySelector('.discover-pop')?.remove();const opts=shuffle(s.cards.filter(c=>c.card_type==='unit'&&Number(c.stars||c.tier||0)===Number(star)).map(c=>structuredClone(c))).filter((c,i,a)=>a.findIndex(x=>x.id===c.id)===i).slice(0,3);if(!opts.length)return log('没有可选的 '+star+' 星棋子。','bad');const pop=document.createElement('div');pop.className='discover-pop';pop.innerHTML='<div class="discover-box"><h3>选择1个 '+star+' 星棋子</h3><div class="discover-options">'+opts.map((u,i)=>'<button class="discover-option" onclick="chooseDiscover('+skillIndex+','+i+')">'+card(u,'discover',i)+'</button>').join('')+'</div></div>';pop._options=opts;document.body.appendChild(pop)}
+window.chooseDiscover=(skillIndex,optIndex)=>{const pop=document.querySelector('.discover-pop'),u=pop?pop._options[optIndex]:null;if(!u)return;const skill=s.bench[skillIndex];s.bench[skillIndex]=null;const bi=emptyBench();if(bi<0){s.bench[skillIndex]=skill;return log('备战区已满，无法加入棋子。','bad')}s.bench[bi]=structuredClone(u);pop.remove();log('金卡奖励：获得 '+u.name+'。','good');triggerRecruit(s.bench[bi]);triggerPlayerSupports();tryCombineTriples();draw()};
+function openSkillDiscover(skillIndex,star){document.querySelector('.discover-pop')?.remove();const opts=shuffle(s.cards.filter(c=>c.card_type==='skill'&&Number(s.shopLevel)>=Number(c.min_shop_level||1)&&(Number(c.cost||0)===Number(star)||c.universal_skill_pool)&&c.effect!=='discover_skill'&&!String(c.id||'').startsWith('past_dust_')).map(c=>structuredClone(c))).filter((c,i,a)=>a.findIndex(x=>x.id===c.id)===i).slice(0,3);if(!opts.length)return log('没有可挑选的 '+star+' 星技能卡。','bad');const pop=document.createElement('div');pop.className='discover-pop';pop.innerHTML='<div class="discover-box"><h3>挑选1张 '+star+' 星技能卡</h3><div class="discover-options">'+opts.map((u,i)=>'<button class="discover-option" onclick="chooseSkillDiscover('+skillIndex+','+i+')">'+card(u,'discover',i)+'</button>').join('')+'</div></div>';pop._options=opts;document.body.appendChild(pop)}
+window.chooseSkillDiscover=(skillIndex,optIndex)=>{const pop=document.querySelector('.discover-pop'),chosen=pop?pop._options[optIndex]:null,source=s.bench[skillIndex];if(!chosen||!source)return;s.bench[skillIndex]=structuredClone(chosen);pop.remove();log('【'+source.name+'】：获得【'+chosen.name+'】。','good');triggerPlayerSupports();draw()};
+function openUnitDiscoverUpto(skillIndex,maxStar){document.querySelector('.discover-pop')?.remove();const opts=shuffle(s.cards.filter(c=>c.card_type==='unit'&&Number(c.stars||c.tier||0)<=Number(maxStar)).map(c=>structuredClone(c))).filter((c,i,a)=>a.findIndex(x=>x.id===c.id)===i).slice(0,3);if(!opts.length)return log('没有可挑选的 '+maxStar+' 星及以下棋子。','bad');const pop=document.createElement('div');pop.className='discover-pop';pop.innerHTML='<div class="discover-box"><h3>挑选1张 '+maxStar+' 星及以下棋子</h3><div class="discover-options">'+opts.map((u,i)=>'<button class="discover-option" onclick="chooseUnitUpto('+skillIndex+','+i+')">'+card(u,'discover',i)+'</button>').join('')+'</div></div>';pop._options=opts;document.body.appendChild(pop)}
+window.chooseUnitUpto=(skillIndex,optIndex)=>{const pop=document.querySelector('.discover-pop'),chosen=pop?pop._options[optIndex]:null,source=s.bench[skillIndex];if(!chosen||!source)return;s.bench[skillIndex]=structuredClone(chosen);pop.remove();log('【'+source.name+'】：获得 '+chosen.name+'。','good');triggerRecruit(s.bench[skillIndex]);triggerPlayerSupports();tryCombineTriples();draw()};
+function harmonyTargets(){const board=compact(s.board),chosen=[],used=new Set(),wild=[];for(const u of board){if(u.faction==='任意')wild.push(u);else if(!used.has(u.faction)){used.add(u.faction);chosen.push(u)}}const available=[...new Set(s.cards.filter(c=>c.card_type==='unit'&&c.faction&&c.faction!=='任意').map(c=>c.faction))].filter(f=>!used.has(f));for(const u of wild){let faction=available.shift();if(!faction){const replaceable=chosen.findIndex(x=>!x._harmony_locked);if(replaceable>=0){faction=chosen[replaceable].faction;chosen.splice(replaceable,1)}else faction='任意-'+chosen.length}u._harmony_faction=faction;u._harmony_locked=true;chosen.push(u)}for(const u of board){delete u._harmony_locked;delete u._harmony_faction}return chosen}
+function useHarmonyProsperity(sk){const targets=harmonyTargets(),value=Number(sk.effect_value||sk.cost||1);for(const u of targets)applyClientBuff(u,value,value,0,'skill');log('使用【'+sk.name+'】：'+targets.map(u=>u.name).join('、')+' 获得 +'+value+'/+'+value+'。','good');return targets.length}
+async function useBenchSkill(i,viaBoard=false){const sk=s.bench[i];if(!sk||sk.card_type!=='skill')return false;if(sk.effect==='grant_free_refreshes'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}s.freeRefreshes+=Math.max(0,Number(sk.free_refreshes||2));s.bench[i]=null;log('使用【'+sk.name+'】：获得 '+Number(sk.free_refreshes||2)+' 次免费刷新。','good');triggerPlayerSupports();draw();return true}if(sk.effect==='team_permanent_buff'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}const units=compact(s.board);if(!units.length){log('棋盘上没有棋子。','bad');return true}const value=Math.ceil(Number(sk.effect_value||0));for(const u of units)applyClientBuff(u,value,value,0,'skill');s.bench[i]=null;log('使用【'+sk.name+'】：全体友方棋子获得 +'+value+'/+'+value+'。','good');triggerPlayerSupports();draw();return true}if(sk.effect==='edge_team_buff'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}const units=compact(s.board);if(!units.length){log('棋盘上没有棋子。','bad');return true}const value=Number(sk.effect_value||0),targets=units.length===1?[units[0]]:[units[0],units[units.length-1]];for(const u of targets)applyClientBuff(u,value,value,0,'skill');s.bench[i]=null;log('使用【'+sk.name+'】：'+targets.map(u=>u.name).join('、')+' 获得 +'+value+'/+'+value+'。','good');triggerPlayerSupports();draw();return true}if(sk.effect==='team_temporary_initiative_buff'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}const units=compact(s.board);if(!units.length){log('棋盘上没有棋子。','bad');return true}for(const u of units){u.temporary_initiative_effects=Number(u.temporary_initiative_effects||0)+1;if(!u.initiative&&!(u.mechanics||[]).includes('initiative')){u.mechanics=[...new Set([...(u.mechanics||[]),'initiative'])];u.temporary_initiative_mechanic_added=true}}s.bench[i]=null;log('使用【'+sk.name+'】：全体友方棋子获得1回合【先手：自身获得+1/+1】。','good');triggerPlayerSupports();draw();return true}if(sk.effect==='discover_unit_mechanic'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}if(Number(s.shopLevel)<Number(sk.min_shop_level||1)){log('【'+sk.name+'】需要商店达到 '+Number(sk.min_shop_level||4)+' 级才能使用。','bad');return true}const mechanic=sk.discover_mechanic,label=sk.discover_label||mechanic,pool=shuffle(s.cards.filter(c=>c.card_type==='unit'&&((c.mechanics||[]).includes(mechanic)||!!c[mechanic])).map(c=>structuredClone(c))).filter((c,n,a)=>a.findIndex(x=>x.id===c.id)===n).slice(0,3);if(!pool.length){log('没有可挑选的'+label+'棋子。','bad');return true}const chosen=await chooseThree(sk.name+'：挑选1张'+label+'棋子',pool);if(!chosen)return true;s.bench[i]=chosen;triggerRecruit(chosen);log('使用【'+sk.name+'】：获得 '+chosen.name+'。','good');triggerPlayerSupports();tryCombineTriples();draw();return true}if(sk.effect==='random_repeated_buff'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}const units=compact(s.board);if(!units.length){log('棋盘上没有棋子。','bad');return true}const repetitions=Math.max(1,Number(sk.repetitions||2));for(let n=0;n<repetitions;n++){const u=units[Math.floor(Math.random()*units.length)];applyClientBuff(u,1,1,0,'skill')}s.bench[i]=null;log('使用【'+sk.name+'】：随机施加 '+repetitions+' 次 +1/+1。','good');triggerPlayerSupports();draw();return true}if(sk.effect==='reduce_upgrade_cost'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}try{const r=await api('/api/reduce_upgrade_cost',{amount:Number(sk.reduce_upgrade_cost||2)});syncPlayer(r);s.bench[i]=null;log('使用【'+sk.name+'】：商店升级费用降低 '+Number(r.reduced||2)+'。','good');triggerPlayerSupports();draw()}catch(e){log(e.message,'bad')}return true}if(sk.effect==='next_round_gold'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}s.pendingNextRoundGold+=Number(sk.next_round_gold||2);s.bench[i]=null;log('使用【'+sk.name+'】：下回合获得 '+Number(sk.next_round_gold||2)+' 金币。','good');triggerPlayerSupports();draw();return true}if(sk.effect==='take_random_shop_unit'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}const choices=s.shop.map((u,idx)=>({u,idx})).filter(x=>x.u?.card_type==='unit');if(!choices.length){log('商店内没有棋子。','bad');return true}const pick=choices[Math.floor(Math.random()*choices.length)];s.bench[i]=structuredClone(pick.u);s.shop[pick.idx]=null;log('使用【'+sk.name+'】：从商店获得 '+pick.u.name+'。','good');triggerPlayerSupports();tryCombineTriples();draw();return true}if(sk.effect==='team_temporary_logistics'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}for(const u of compact(s.board)){u.temporary_logistics_attack=Number(u.temporary_logistics_attack||0)+Number(sk.temporary_logistics_attack||sk.effect_value||0);u.temporary_logistics_hp=Number(u.temporary_logistics_hp||0)+Number(sk.temporary_logistics_hp||sk.effect_value||0)}s.bench[i]=null;log('使用【'+sk.name+'】：全体友方获得1回合后勤。','good');triggerPlayerSupports();draw();return true}if(sk.effect==='gain_random_unit_upto'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}const pool=s.cards.filter(c=>c.card_type==='unit'&&Number(c.stars||c.tier||0)<=Number(sk.max_star||sk.cost||1));if(!pool.length){log('没有符合条件的棋子。','bad');return true}const chosen=structuredClone(pool[Math.floor(Math.random()*pool.length)]),value=Number(sk.effect_value||0);applyClientBuff(chosen,value,value,0,'skill');s.bench[i]=chosen;log('使用【'+sk.name+'】：获得 '+chosen.name+'，并使其获得 +'+value+'/+'+value+'。','good');triggerPlayerSupports();tryCombineTriples();draw();return true}if(sk.effect==='battle_wager'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}s.battleWagers++;s.bench[i]=null;log('使用【'+sk.name+'】：等待本回合战斗结果。','good');triggerPlayerSupports();draw();return true}if(sk.effect==='discover_unit_upto'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}openUnitDiscoverUpto(i,sk.discover_max_star||sk.cost||1);return true}if(sk.effect==='harmony_prosperity'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}if(!compact(s.board).length){log('棋盘上没有可获得加成的棋子。','bad');return true}useHarmonyProsperity(sk);s.bench[i]=null;triggerPlayerSupports();draw();return true}if(sk.effect==='discover_skill'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}openSkillDiscover(i,sk.discover_skill_star||sk.cost||1);return true}if(sk.effect==='discover_unit'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}openDiscover(i,sk.discover_star||Math.min(6,Number(s.shopLevel||1)+1));return true}if(sk.effect==='gain_gold'||sk.id==='economic_aid'){if(!viaBoard){log('请将【'+sk.name+'】拖至棋盘使用。','bad');return true}try{const r=await api('/api/gain_gold',{amount:sk.effect_value||1});syncPlayer(r);s.bench[i]=null;log('使用【'+sk.name+'】：获得 '+(r.gained||1)+' 枚金币。','good');triggerPlayerSupports();draw()}catch(e){log(e.message,'bad')}return true}return false}
+function cardEl(side,slot){return document.querySelector('.card[data-side="'+side+'"][data-slot="'+slot+'"]')}
+async function animateAssimilate(side,from,to){const source=cardEl(side==='left'?'board':'enemy',from),target=cardEl(side==='left'?'board':'enemy',to);if(!source||!target)return sleep(180);const a=source.getBoundingClientRect(),b=target.getBoundingClientRect();target.style.transition='transform .42s ease-in,opacity .42s ease-in';target.style.zIndex='8';target.style.transform='translate('+(a.left-b.left)+'px,'+(a.top-b.top)+'px) scale(.25)';target.style.opacity='0';await sleep(440)}
+async function animatePrepAssimilate(source,target){draw();await sleep(20);const units=compact(s.board),si=units.indexOf(source),ti=units.indexOf(target);if(si<0||ti<0)return;await animateAssimilate('left',si+1,ti+1)}
+async function animateBullet(side,from,toSide,to){const sourceBoard=side==='left'?'board':'enemy',fallback=s.assimilatedSources[side+':'+from],a=cardEl(sourceBoard,from)||cardEl(sourceBoard,fallback),b=cardEl(toSide==='left'?'board':'enemy',to);if(!a||!b)return sleep(120);const ar=a.getBoundingClientRect(),br=b.getBoundingClientRect(),sx=ar.left+ar.width/2,sy=ar.top+ar.height/2,tx=br.left+br.width/2,ty=br.top+br.height/2,el=document.createElement('div');el.className='bullet';el.style.left='0px';el.style.top='0px';document.body.appendChild(el);try{await el.animate([{transform:'translate('+sx+'px,'+sy+'px) translate(-50%,-50%)'},{transform:'translate('+tx+'px,'+ty+'px) translate(-50%,-50%)'}],{duration:320,easing:'linear'}).finished}catch{}el.remove()}
+async function animateCollision(ev){const a=cardEl(ev.side==='left'?'board':'enemy',ev.from_slot),b=cardEl(ev.target_side==='left'?'board':'enemy',ev.to_slot);if(!a||!b)return sleep(150);const ar=a.getBoundingClientRect(),br=b.getBoundingClientRect(),dx=(br.left-ar.left)*.45,dy=(br.top-ar.top)*.45;a.classList.add('attacking');a.style.transform='translate('+dx+'px,'+dy+'px)';await sleep(260);a.style.transform='';await sleep(220);a.classList.remove('attacking')}
+async function animateCleave(ev){const b=cardEl(ev.target_side==='left'?'board':'enemy',ev.to_slot);if(!b)return sleep(120);const r=b.getBoundingClientRect(),el=document.createElement('div');el.className='cleave-slash';el.style.left=(r.left+r.width/2)+'px';el.style.top=(r.top+r.height/2)+'px';document.body.appendChild(el);try{await el.animate([{opacity:0,transform:'translate(-50%,-50%) rotate(-8deg) scaleX(.25)'},{opacity:1,transform:'translate(-50%,-50%) rotate(-8deg) scaleX(1.25)'},{opacity:0,transform:'translate(-50%,-50%) rotate(-8deg) scaleX(1.55)'}],{duration:360,easing:'ease-out'}).finished}catch{}el.remove()}
+function applyEventLog(ev){if(ev.type==='gain_gold')return log((ev.from||'棋子')+' 后勤：获得 '+(ev.amount||0)+' 枚金币。','good');if(ev.type==='assimilate')return log((ev.from||'妮芙')+' 兼并 '+(ev.to||'友方棋子')+'，获得其属性'+(ev.legacy_count?'与遗计':'')+'。','good');if(ev.type==='revive_failed')return log((ev.from||'棋子')+' 复活时棋盘已满，被挤出战斗。','bad');if(ev.type==='shield_block')return log((ev.from||'')+' 的护盾抵挡了来自 '+(ev.source||'敌人')+' 的 '+(ev.damage_blocked||0)+' 点伤害。','good');if(['team_buff','logistics_buff','temporary_logistics_buff','temporary_initiative_buff','permanent_buff'].includes(ev.type))return log((ev.from||'')+' 使 '+(ev.to||'')+' 获得增益','good');if(ev.type==='gain_card'){if(ev.side==='left'){const i=emptyBench();if(i>=0)s.bench[i]=ev.card;return log((ev.from||'')+' 获得【'+ev.card_name+'】','good')}return log('敌方 '+(ev.from||'')+' 触发获得【'+ev.card_name+'】。')}if(ev.type==='revive')return log(ev.from+' 复活。','good');if(ev.type==='summon')return log(ev.from+' 召唤 '+ev.unit.name+'。','good');if(ev.damage!==undefined){const dtype=ev.damage_type==='bullet'?'铳弹伤害':ev.damage_type==='spell'?'法术伤害':ev.damage_type==='cleave'?'横斩':'碰撞';log(ev.from+' 对 '+ev.to+' 造成 '+ev.damage+' '+dtype+(ev.counter_damage?'，反伤 '+ev.counter_damage:''));}}
+function eventUnit(side,slot){const arr=side==='left'?s.board:s.enemy;return arr&&arr[slot-1]}
+function applyBattleEventState(ev){if(ev.type==='assimilate'){const source=eventUnit(ev.side,ev.slot),target=eventUnit(ev.side,ev.to_slot),arr=ev.side==='left'?s.board:s.enemy;s.assimilatedSources[ev.side+':'+ev.to_slot]=ev.slot;if(source){source.attack=ev.attack;source.max_hp=ev.max_hp;source.current_hp=ev.current_hp;if(ev.legacy_count)source.mechanics=[...new Set([...(source.mechanics||[]),'legacy'])]}if(target)arr[ev.to_slot-1]=null;return}if(ev.type==='assimilate_remove'){const arr=ev.side==='left'?s.board:s.enemy;arr[ev.slot-1]=null;return}if(ev.type==='shield_block'){const u=eventUnit(ev.side,ev.slot);if(u){u.shield=false;u.mechanics=(u.mechanics||[]).filter(m=>m!=='shield')}return}if(ev.damage!==undefined){const a=eventUnit(ev.side,ev.from_slot),t=eventUnit(ev.target_side,ev.to_slot);if(a&&ev.attacker_hp!==undefined)a.current_hp=ev.attacker_hp;if(t&&ev.target_hp!==undefined)t.current_hp=ev.target_hp}if(['team_buff','logistics_buff','temporary_logistics_buff','temporary_initiative_buff','permanent_buff'].includes(ev.type)){const u=eventUnit(ev.side,ev.slot);if(u){for(const k of ['attack','max_hp','current_hp','bullet_strength','bullet_damage'])if(ev[k]!==undefined)u[k]=ev[k]}}if(ev.type==='revive'&&ev.unit){const arr=ev.side==='left'?s.board:s.enemy;arr[ev.slot-1]=structuredClone(ev.unit)}if(ev.type==='summon'&&ev.unit){const arr=ev.side==='left'?s.board:s.enemy;arr[ev.slot-1]=structuredClone(ev.unit)}if(ev.type==='grant_revive'){const u=eventUnit(ev.side,ev.to_slot);if(u){u.revive=true;u.mechanics=[...new Set([...(u.mechanics||[]),'revive'])]}}}
+async function animateEvents(res){for(const ev of res.events||[]){if(s.skipBattle)break;if(ev.type==='assimilate')await animateAssimilate(ev.side,ev.from_slot,ev.to_slot);else if(ev.damage_type==='bullet')await animateBullet(ev.side,ev.from_slot,ev.target_side,ev.to_slot);else if(ev.damage_type==='collision')await animateCollision(ev);else if(ev.damage_type==='cleave')await animateCleave(ev);applyBattleEventState(ev);draw();applyEventLog(ev);await sleep(140)}s.board=res.left;s.enemy=res.right;draw();await sleep(1000)}
+async function refresh(){if(s.busy||s.phase!=='备战')return;try{if(s.freeRefreshes>0){s.shop=await api('/api/shop');s.freeRefreshes--;log('免费刷新商店，剩余 '+s.freeRefreshes+' 次。','good')}else{const r=await api('/api/refresh',{});syncPlayer(r);recordGoldSpent(r.spent||1);s.shop=r.shop}draw()}catch(e){log(e.message,'bad')}}
+async function upgradeShop(){try{const r=await api('/api/upgrade_shop',{});syncPlayer(r);recordGoldSpent(r.spent||0);log('商店升到 Lv.'+s.shopLevel,'good');draw()}catch(e){log(e.message,'bad')}}
+async function loadEnemy(){s.enemy=await api('/api/enemy',{round:s.round});draw()}
+function intrinsicDefenseSource(u){const base=baseUnitById(u.id);if(!base)return u;return u.golden?applyGoldenOverrides(structuredClone(base)):base}
+function inheritDefenses(target,victim){const source=intrinsicDefenseSource(victim),defs=['guard','shield','lock_hp','stealth','revive'];target.mechanics=[...(target.mechanics||[])];for(const k of defs)if(hasMark(source,k)){target[k]=true;if(!target.mechanics.includes(k))target.mechanics.push(k)}}
+async function resolveReturnCampEffects(){for(const source of compact(s.board)){const effect=source.return_camp||{};if(effect.type==='gain_fertile_soil')grantFertileSoil(source.name,Math.max(1,Number(effect.count||1)),'回营')}const sources=compact(s.board).filter(u=>(u.return_camp||{}).type==='assimilate_left_defenses_gain_gold');for(const source of sources){const units=compact(s.board),idx=units.indexOf(source);if(idx<=0)continue;const victim=units[idx-1],effect=source.return_camp||{};await animatePrepAssimilate(source,victim);const hp=Number(victim.max_hp||0);source.attack=Number(source.attack||0)+Number(victim.attack||0);source.max_hp=Number(source.max_hp||1)+hp;source.current_hp=Number(source.current_hp??source.max_hp-hp)+hp;inheritDefenses(source,victim);units.splice(idx-1,1);s.board=pad(units);try{const r=await api('/api/gain_gold',{amount:Number(effect.gold||0)});syncPlayer(r);log(source.name+' 回营：兼并 '+victim.name+'，获得其属性与防御机制，并获得 '+Number(effect.gold||0)+' 金币。','good')}catch(e){log(e.message,'bad')}draw()}}
+async function startPrep(){clearInterval(s.timer);s.phase='备战';s.busy=true;s.skipBattle=false;s.skipBattleAvailable=false;s.prepSeconds=PREP_TIMES[Math.min(s.round-1,PREP_TIMES.length-1)]||90;if(s.pendingNextRoundGold>0){try{const amount=s.pendingNextRoundGold,r=await api('/api/gain_gold',{amount});s.pendingNextRoundGold=0;syncPlayer(r);log('【有备无患】：获得 '+amount+' 金币。','good')}catch(e){log(e.message,'bad')}}await resolveReturnCampEffects();s.busy=false;loadEnemy();s.timer=setInterval(()=>{if(s.phase!=='备战'){clearInterval(s.timer);return}s.prepSeconds=Math.max(0,s.prepSeconds-1);if(s.prepSeconds<=0){clearInterval(s.timer);fight();return}draw()},1000);draw()}
+function cleanupAfterBattle(u){if(!u)return u;const x=structuredClone(u);if(x.temporary_initiative_mechanic_added)x.mechanics=(x.mechanics||[]).filter(m=>m!=='initiative');for(const k of ['current_hp','bullet_strength_temp','temporary_revive','summoned_by_phase','summoned_by_revival','summoned_by_legacy','death_feud_count','revive_consumed_by_summon','temporary_logistics_hp','temporary_logistics_attack','temporary_initiative_effects','temporary_initiative_mechanic_added','battle_shop_level','venom_consumed','_venom_destroyed','_killer_index','inherited_legacies','opponent_attack_trigger_count'])delete x[k];return x}
+function restoreBoardAfterBattle(before,after,persistent){return pad(before.map((orig,i)=>{const r=after&&after[i],saved=persistent&&persistent[i];const merged=structuredClone(orig);if(saved&&saved.id===orig.id){for(const k of ['attack','max_hp','bullet_strength','bullet_damage','injury_growth_count'])if(saved[k]!==undefined)merged[k]=Number(saved[k])}if(r&&r.id===orig.id)for(const k of ['cumulative_damage_count','mostima_damage_count','injury_growth_count'])if(r[k]!==undefined)merged[k]=r[k];return cleanupAfterBattle(merged)}))}
+async function fight(){if(s.busy||s.phase!=='备战')return;clearInterval(s.timer);s.prepSeconds=Math.max(0,s.prepSeconds);const preBattle=compact(s.board).map(u=>structuredClone(u));s.assimilatedSources={};s.busy=true;for(const u of compact(s.board))u.current_hp=u.max_hp;s.phase='战斗中';draw();setTimeout(()=>{if(s.phase==='战斗中'){s.skipBattleAvailable=true;draw()}},30000);try{const res=await api('/api/battle',{left:compact(s.board),right:compact(s.enemy),round:s.round});await animateEvents(res);syncPlayer(res);if(s.battleWagers>0&&(res.winner==='left'||res.winner==='draw')){const amount=s.battleWagers*(res.winner==='left'?3:1),gr=await api('/api/gain_gold',{amount});syncPlayer(gr);log('【料敌机先】：获得 '+amount+' 金币。','good')}s.battleWagers=0;if(res.winner==='left')log('战斗胜利！','good');else if(res.winner==='draw')log('战斗平局。');else log('战斗失败！扣除 '+(res.loss_damage||0)+' 点生命。','bad');s.board=restoreBoardAfterBattle(preBattle,res.left,res.persistent_left);if(!s.shopLocked)s.shop=await api('/api/shop');s.shopLocked=false;await startPrep()}catch(e){log(e.message,'bad');s.board=pad(preBattle);s.phase='备战';s.busy=false;draw()}}
+function requestSkipBattle(){if(s.phase==='战斗中'&&s.skipBattleAvailable){s.skipBattle=true;log('已跳过对战动画。')}}
+window.choose=async(w,i)=>{if(w==='shop')return buyShopIndex(i);if(w==='bench'&&s.bench[i]){if(await useBenchSkill(i))return;draw()}};window.rightClickCard=(ev,w,i)=>showCardDetail(ev,w,i);document.addEventListener('click',ev=>{if(!ev.target.closest('.detail-pop'))document.querySelector('.detail-pop')?.remove()});
+async function start(){const p=await api('/api/reset',{});syncPlayer(p);s.cards=await api('/api/cards');s.board=Array(7).fill(null);s.enemy=Array(7).fill(null);s.bench=Array(12).fill(null);s.shopLocked=false;s.fertileSoilGrowth=0;s.pendingNextRoundGold=0;s.battleWagers=0;s.freeRefreshes=0;s.shop=await api('/api/shop');log('第 1 回合开始。');await startPrep()}
+$('#refresh').onclick=refresh;$('#upgrade').onclick=upgradeShop;$('#lockShop').onclick=()=>{s.shopLocked=!s.shopLocked;log(s.shopLocked?'商店已锁定。':'已取消商店锁定。');draw()};$('#fight').onclick=fight;$('#skip').onclick=requestSkipBattle;$('#sell').onclick=()=>log('请将棋子拖入商店出售。');$('#reset').onclick=async()=>{await api('/api/reset',{});location.reload()};start().catch(e=>log('请先运行 python server.py','bad'));
 </script></body></html>
