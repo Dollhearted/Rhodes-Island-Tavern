@@ -48,7 +48,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 翎羽 / Plume
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Plume','翎羽','拉特兰干员','拉特兰',1,1,2,1,'#e53935','战斗开始：本回合战斗中，所有友方棋子获得+1铳弹强度','{"mechanics":["battle_start","bullet_strength"],"battle_start":{"type":"team_bullet_strength","amount":1},"golden_description":"战斗开始：本回合战斗中，所有友方棋子获得+2铳弹强度","golden_overrides":{"description":"战斗开始：本回合战斗中，所有友方棋子获得+2铳弹强度","battle_start":{"type":"team_bullet_strength","amount":2}}}')
+VALUES ('Plume','翎羽','拉特兰干员','拉特兰',1,2,1,1,'#e53935','战斗开始：本回合战斗中，所有友方棋子获得+1铳弹强度','{"mechanics":["battle_start","bullet_strength"],"battle_start":{"type":"team_bullet_strength","amount":1},"golden_description":"战斗开始：本回合战斗中，所有友方棋子获得+2铳弹强度","golden_overrides":{"description":"战斗开始：本回合战斗中，所有友方棋子获得+2铳弹强度","battle_start":{"type":"team_bullet_strength","amount":2}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
