@@ -627,7 +627,7 @@ def apply_battle_start_effects(team, side, events):
                     ally["bullet_strength_temp"]=int(ally.get("bullet_strength_temp",0) or 0)+amount
                     trigger_morale(ally,ai,side,events,"battle_start",team)
                     affected.append(ai+1)
-            events.append({"type":"battle_start","side":side,"from":u["name"],"from_slot":idx+1,"effect":"bullet_strength","amount":amount,"affected_slots":affected})
+            events.append({"type":"battle_start","side":side,"from":u["name"],"from_slot":idx+1,"effect":"bullet_strength","amount":amount,"affected_slots":affected,"affected":[{"slot":ai+1,"bullet_strength_temp":int(ally.get("bullet_strength_temp",0) or 0),"bullet_strength":bullet_strength(ally)} for ai,ally in enumerate(team) if ally and ai+1 in affected]})
 
 def has_revive(unit):
     return bool(unit and (unit.get("revive") or "revive" in unit.get("mechanics",[])))
