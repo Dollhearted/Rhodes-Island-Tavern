@@ -281,18 +281,48 @@ def queue_pending_death(pending_deaths, unit, unit_index, side, team, foes):
     if not any(existing is unit for existing, *_ in pending_deaths):
         pending_deaths.append((unit,unit_index,side,team,foes))
 
-def make_revived_unit(unit):
+ROUND_AURA_KEYS=("_round_aura_attack","_round_aura_hp","_round_aura_bullet_strength")
+
+def round_aura_values(team, source=None):
+    units=[u for u in team if u]
+    if source is not None: units.append(source)
+    return tuple(max([0]+[int(u.get(k,0) or 0) for u in units]) for k in ROUND_AURA_KEYS)
+
+def register_round_aura(team, attack=0, hp=0, bullet_strength_gain=0, source=None):
+    gains=(int(attack or 0),int(hp or 0),int(bullet_strength_gain or 0))
+    units=[u for u in team if u]
+    if source is not None and all(u is not source for u in units): units.append(source)
+    for u in units:
+        for key,gain in zip(ROUND_AURA_KEYS,gains):
+            u[key]=int(u.get(key,0) or 0)+gain
+
+def apply_round_aura_to_unit(unit, team, source=None):
+    attack,hp,bs=round_aura_values(team,source)
+    if attack: unit["attack"]=int(unit.get("attack",0) or 0)+attack
+    if hp:
+        unit["max_hp"]=int(unit.get("max_hp",1) or 1)+hp
+        unit["current_hp"]=int(unit.get("current_hp",unit["max_hp"]-hp) or 0)+hp
+    if bs: unit["bullet_strength_temp"]=int(unit.get("bullet_strength_temp",0) or 0)+bs
+    for key,value in zip(ROUND_AURA_KEYS,(attack,hp,bs)): unit[key]=value
+    return unit
+
+def make_revived_unit(unit, team=None):
     if unit.get("revive_consumed_by_summon"): return None
     if not (unit.get("revive") or "revive" in unit.get("mechanics",[])): return None
-    # Revive summons an unbuffed initial copy of the original unit in the same slot.
-    # Permanent skill-card buffs (+attack/+hp/bullet_strength) and temporary battle buffs are not kept.
-    base = next((dict(c) for c in cards() if c.get("card_type")=="unit" and c.get("id")==unit.get("id")), None)
-    revived = base or dict(unit)
+    # Return as an unbuffed initial copy, preserving card quality. Round-long
+    # auras are then reapplied because they remain active for the whole battle.
+    base = next((copy.deepcopy(c) for c in cards() if c.get("card_type")=="unit" and c.get("id")==unit.get("id")), None)
+    revived = base or copy.deepcopy(unit)
+    if unit.get("golden"):
+        revived=apply_golden_unit(revived)
+        revived["attack"]=int(base.get("attack",0) or 0)*2 if base else int(revived.get("attack",0) or 0)
+        revived["max_hp"]=int(base.get("max_hp",1) or 1)*2 if base else int(revived.get("max_hp",1) or 1)
     revived["current_hp"] = revived.get("max_hp", 1)
     revived.pop("revive", None)
     revived["mechanics"] = [m for m in revived.get("mechanics", []) if m != "revive"]
     for k in ("bullet_strength","bullet_strength_temp","bullet_power","ammo_strength","ammo_power","gun_strength","gun_power","summoned_by_phase"):
         revived.pop(k, None)
+    apply_round_aura_to_unit(revived,team or [],unit)
     revived["summoned_by_revival"] = True
     return revived
 
@@ -339,7 +369,7 @@ def handle_unit_death(unit, unit_index, side, team, foes, events):
         trigger_legacy(unit,unit_index,side,team,foes,events)
         legacy_trigger_index += 1
     trigger_death_feud(unit,unit_index,side,team,foes,events)
-    revived=make_revived_unit(unit)
+    revived=make_revived_unit(unit,team)
     if revived and team[unit_index] is None:
         team[unit_index]=revived
         events.append({"type":"revive","side":side,"slot":unit_index+1,"from":unit["name"],"unit":copy.deepcopy(revived)})
@@ -564,7 +594,7 @@ def resolve_assimilation_initiative(unit, idx, team, foes, side, events):
         events.append({"type":"assimilate_remove","side":side,"slot":victim_index+1,"from":unit["name"],"to":victim["name"]})
         # This victim's legacy is now complete; resolve its revival before the
         # next assimilated victim begins resolving its legacy.
-        revived=make_revived_unit(victim)
+        revived=make_revived_unit(victim,team)
         if not revived: continue
         revive_slot=victim_index if team[victim_index] is None else summon_slot_for(team,victim_index)
         if revive_slot is None:
@@ -627,6 +657,7 @@ def apply_battle_start_effects(team, side, events):
                     ally["bullet_strength_temp"]=int(ally.get("bullet_strength_temp",0) or 0)+amount
                     trigger_morale(ally,ai,side,events,"battle_start",team)
                     affected.append(ai+1)
+            register_round_aura(team,bullet_strength_gain=amount,source=u)
             events.append({"type":"battle_start","side":side,"from":u["name"],"from_slot":idx+1,"effect":"bullet_strength","amount":amount,"affected_slots":affected,"affected":[{"slot":ai+1,"bullet_strength_temp":int(ally.get("bullet_strength_temp",0) or 0),"bullet_strength":bullet_strength(ally)} for ai,ally in enumerate(team) if ally and ai+1 in affected]})
 
 def has_revive(unit):
@@ -643,8 +674,11 @@ def summon_unit_from_legacy(source, source_index, side, team, summon_id, grant_r
     if slot is None: return None
     unit=card_by_id(summon_id)
     if not unit: return None
-    if summon_golden: unit=apply_golden_unit(unit)
+    if summon_golden:
+        base_attack=int(unit.get("attack",0) or 0); base_hp=int(unit.get("max_hp",1) or 1)
+        unit=apply_golden_unit(unit); unit["attack"]=base_attack*2; unit["max_hp"]=base_hp*2
     unit["current_hp"]=unit.get("max_hp",1)
+    apply_round_aura_to_unit(unit,team,source)
     unit["summoned_by_phase"]=True
     unit["summoned_by_legacy"]=True
     if grant_revive:
@@ -729,6 +763,8 @@ def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
             deal_spell_damage(unit,unit_index,side,allies,foes,pair[0],pair[1],base,events,source_effect="legacy",pending_deaths=pending_deaths)
     elif legacy.get("type")=="team_buff":
         apply_team_buff(unit,unit_index,side,allies,legacy,events,source_effect="legacy")
+        if legacy.get("round_aura"):
+            register_round_aura(allies,legacy.get("attack",0),legacy.get("max_hp",legacy.get("hp",0)),legacy.get("bullet_strength",0),source=unit)
     elif legacy.get("type")=="summon_then_bullet":
         summoned=summon_unit_from_legacy(unit,unit_index,side,allies,legacy.get("summon_id"),bool(legacy.get("grant_revive")),events,bool(legacy.get("summon_golden")))
         if summoned and legacy.get("consume_revive"):
@@ -900,7 +936,7 @@ def deal_cleave_damage(source, source_index, side, allies, foes, target_index, t
     if dead: mark_killer(target,source_index)
     events.append({"type":"cleave","side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":target_side,"damage_type":"cleave","damage":dealt,"attempted_damage":dmg,"shield_blocked":blocked,"counter_damage":0,"target_hp":max(0,target.get("current_hp",0)),"attacker_hp":max(0,source.get("current_hp",0)),"target_dead":dead,"attacker_dead":source.get("current_hp",0)<=0})
     if dead and foes[target_index] is target:
-        foes[target_index]=None;pending_deaths.append((target,target_index,target_side,foes,allies))
+        queue_pending_death(pending_deaths,target,target_index,target_side,foes,allies)
 
 def perform_attack_action(attacker, idx, side, mine, foes, events, round_number=1, source_effect=None):
     if idx>=len(mine) or mine[idx] is not attacker or attacker.get("current_hp",0)<=0: return False

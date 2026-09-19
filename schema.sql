@@ -169,7 +169,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 塑心 / Virtuosa
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Virtuosa','塑心','拉特兰干员','拉特兰',5,2,2,1,'#e53935','遗计：本回合战斗中，所有友方棋子获得+2铳弹强度和+2/+2','{"mechanics":["legacy","bullet_strength"],"legacy":{"type":"team_buff","attack":2,"max_hp":2,"bullet_strength":2},"golden_description":"遗计：本回合战斗中，所有友方棋子获得+4铳弹强度和+4/+4","golden_overrides":{"description":"遗计：本回合战斗中，所有友方棋子获得+4铳弹强度和+4/+4","legacy":{"type":"team_buff","attack":4,"max_hp":4,"bullet_strength":4}}}')
+VALUES ('Virtuosa','塑心','拉特兰干员','拉特兰',5,2,2,1,'#e53935','遗计：本回合战斗中，所有友方棋子获得+2铳弹强度和+2/+2','{"mechanics":["legacy","bullet_strength"],"legacy":{"type":"team_buff","attack":2,"max_hp":2,"bullet_strength":2,"round_aura":true},"golden_description":"遗计：本回合战斗中，所有友方棋子获得+4铳弹强度和+4/+4","golden_overrides":{"description":"遗计：本回合战斗中，所有友方棋子获得+4铳弹强度和+4/+4","legacy":{"type":"team_buff","attack":4,"max_hp":4,"bullet_strength":4,"round_aura":true}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
