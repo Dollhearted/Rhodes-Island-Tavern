@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS players (
     health INTEGER NOT NULL DEFAULT 50,
     round INTEGER NOT NULL DEFAULT 1,
     shop_level INTEGER NOT NULL DEFAULT 1,
-    shop_discount INTEGER NOT NULL DEFAULT 0
+    shop_discount INTEGER NOT NULL DEFAULT 0,
+    total_gold_earned INTEGER NOT NULL DEFAULT 3
 );
 
 CREATE TABLE IF NOT EXISTS unit_cards (
@@ -198,7 +199,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 缪尔赛思 / Muelsyse
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Muelsyse','缪尔赛思','中立干员','中立',6,6,6,1,'#cfd4dc','上场：选择1个棋子，缪尔赛思将变形为该棋子，并保留缪尔赛思的属性','{"mechanics":["on_deploy"],"on_deploy":{"type":"transform_select","target_golden":false},"golden_description":"上场：选择1个棋子，缪尔赛思将变形为该棋子金色版，并保留缪尔赛思的属性","golden_overrides":{"description":"上场：选择1个棋子，缪尔赛思将变形为该棋子金色版，并保留缪尔赛思的属性","on_deploy":{"type":"transform_select","target_golden":true}}}')
+VALUES ('Muelsyse','缪尔赛思','中立干员','中立',6,6,6,1,'#cfd4dc','上场：选择棋盘上的1个棋子，缪尔赛思将变形为该棋子的普通版本，并保留缪尔赛思的属性','{"mechanics":["on_deploy"],"on_deploy":{"type":"transform_select","target_golden":false},"golden_description":"上场：选择棋盘上的1个棋子，缪尔赛思将变形为该棋子的金卡版本，并保留缪尔赛思的属性","golden_overrides":{"description":"上场：选择棋盘上的1个棋子，缪尔赛思将变形为该棋子的金卡版本，并保留缪尔赛思的属性","on_deploy":{"type":"transform_select","target_golden":true}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,

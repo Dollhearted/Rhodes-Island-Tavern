@@ -45,8 +45,9 @@ def initialise_database():
         cols={row[1] for row in con.execute("PRAGMA table_info(players)")}
         if "shop_level" not in cols: con.execute("ALTER TABLE players ADD COLUMN shop_level INTEGER NOT NULL DEFAULT 1")
         if "shop_discount" not in cols: con.execute("ALTER TABLE players ADD COLUMN shop_discount INTEGER NOT NULL DEFAULT 0")
+        if "total_gold_earned" not in cols: con.execute("ALTER TABLE players ADD COLUMN total_gold_earned INTEGER NOT NULL DEFAULT 3")
         con.executescript(schema)
-        con.execute("INSERT OR IGNORE INTO players(id,gold,health,round,shop_level,shop_discount) VALUES('local',3,50,1,1,0)")
+        con.execute("INSERT OR IGNORE INTO players(id,gold,health,round,shop_level,shop_discount,total_gold_earned) VALUES('local',3,50,1,1,0,3)")
 
 def unit_cards_from_db():
     with db() as con:
@@ -77,12 +78,12 @@ def normalize_player_id(player_id):
 
 def ensure_player(player_id="local"):
     player_id=normalize_player_id(player_id)
-    with db() as con: con.execute("INSERT OR IGNORE INTO players(id,gold,health,round,shop_level,shop_discount) VALUES(?,?,?,?,?,?)",(player_id,3,50,1,1,0))
+    with db() as con: con.execute("INSERT OR IGNORE INTO players(id,gold,health,round,shop_level,shop_discount,total_gold_earned) VALUES(?,?,?,?,?,?,?)",(player_id,3,50,1,1,0,3))
     return player_id
 
 def reset_player(player_id="local"):
     player_id=normalize_player_id(player_id)
-    with db() as con: con.execute("INSERT OR REPLACE INTO players(id,gold,health,round,shop_level,shop_discount) VALUES(?,?,?,?,?,?)",(player_id,3,50,1,1,0))
+    with db() as con: con.execute("INSERT OR REPLACE INTO players(id,gold,health,round,shop_level,shop_discount,total_gold_earned) VALUES(?,?,?,?,?,?,?)",(player_id,3,50,1,1,0,3))
     return player(player_id)
 
 def cards():
@@ -145,7 +146,7 @@ def card_purchase_cost(card): return UNIT_CARD_COST if card.get("card_type")=="u
 def player(player_id="local"):
     player_id=ensure_player(player_id)
     with db() as con:
-        row=con.execute("SELECT id,gold,health,round,shop_level,shop_discount FROM players WHERE id=?",(player_id,)).fetchone()
+        row=con.execute("SELECT id,gold,health,round,shop_level,shop_discount,total_gold_earned FROM players WHERE id=?",(player_id,)).fetchone()
         if not row: raise ValueError("\u73a9\u5bb6\u4e0d\u5b58\u5728")
         return with_shop_status(row)
 
@@ -172,7 +173,7 @@ def sell_unit(card_id, player_id="local", half=False):
     with db() as con:
         row=con.execute("SELECT gold FROM players WHERE id=?",(player_id,)).fetchone()
         if not row: raise ValueError("\u73a9\u5bb6\u4e0d\u5b58\u5728")
-        refund=UNIT_SELL_REFUND; con.execute("UPDATE players SET gold=? WHERE id=?",(row["gold"]+refund,player_id))
+        refund=UNIT_SELL_REFUND; con.execute("UPDATE players SET gold=?,total_gold_earned=total_gold_earned+? WHERE id=?",(row["gold"]+refund,refund,player_id))
     data=player(player_id); data["refund"]=refund; return data
 
 def refresh_shop(player_id="local"):
@@ -187,7 +188,7 @@ def gain_gold(amount=1, player_id="local"):
     with db() as con:
         row=con.execute("SELECT gold FROM players WHERE id=?",(player_id,)).fetchone()
         if not row: raise ValueError("\u73a9\u5bb6\u4e0d\u5b58\u5728")
-        con.execute("UPDATE players SET gold=? WHERE id=?",(row["gold"]+amount,player_id))
+        con.execute("UPDATE players SET gold=?,total_gold_earned=total_gold_earned+? WHERE id=?",(row["gold"]+amount,amount,player_id))
     data=player(player_id); data["gained"]=amount; return data
 
 def reduce_upgrade_cost(amount=2, player_id="local"):
@@ -260,14 +261,25 @@ def mark_killer(unit, killer_index):
 
 def choose_target(foes):
     living=[(i,u) for i,u in enumerate(foes) if u and u.get("current_hp",0)>0]; guards=[(i,u) for i,u in living if is_guard(u)]; return random.choice(guards or living)
-def nearest_target(foes, origin_index):
+def nearest_target(foes, origin_index, include_dead=False):
     living=[(i,u) for i,u in enumerate(foes) if u and u.get("current_hp",0)>0]
-    if not living: return None
-    candidates=[(i,u) for i,u in living if is_guard(u)] or living; dist=min(abs(i-origin_index) for i,_ in candidates); return random.choice([(i,u) for i,u in candidates if abs(i-origin_index)==dist])
+    candidates=[(i,u) for i,u in living if is_guard(u)] or living
+    if not candidates and include_dead:
+        candidates=[(i,u) for i,u in enumerate(foes) if u and u.get("current_hp",0)<=0]
+    if not candidates: return None
+    dist=min(abs(i-origin_index) for i,_ in candidates); return random.choice([(i,u) for i,u in candidates if abs(i-origin_index)==dist])
 
-def random_target(foes):
+def random_target(foes, include_dead=False):
     living=[(i,u) for i,u in enumerate(foes) if u and u.get("current_hp",0)>0]
-    return random.choice(living) if living else None
+    if living: return random.choice(living)
+    if include_dead:
+        dead=[(i,u) for i,u in enumerate(foes) if u and u.get("current_hp",0)<=0]
+        return random.choice(dead) if dead else None
+    return None
+
+def queue_pending_death(pending_deaths, unit, unit_index, side, team, foes):
+    if not any(existing is unit for existing, *_ in pending_deaths):
+        pending_deaths.append((unit,unit_index,side,team,foes))
 
 def make_revived_unit(unit):
     if unit.get("revive_consumed_by_summon"): return None
@@ -335,7 +347,11 @@ def handle_unit_death(unit, unit_index, side, team, foes, events):
 
 def resolve_pending_deaths(pending_deaths, events):
     for unit,unit_index,side,team,foes in pending_deaths:
-        handle_unit_death(unit,unit_index,side,team,foes,events)
+        # Damage effects settle as one atomic initiative/legacy effect. A unit
+        # remains targetable until the effect ends, and dies only if it is
+        # still at 0 HP then (an in-effect permanent HP gain may save it).
+        if 0<=unit_index<len(team) and team[unit_index] is unit and unit.get("current_hp",0)<=0:
+            handle_unit_death(unit,unit_index,side,team,foes,events)
 
 def cumulative_damage_effect(unit):
     if not unit: return None
@@ -394,8 +410,7 @@ def deal_bullet_damage(source, source_index, side, allies, foes, target_index, t
         if pending_deaths is None:
             handle_unit_death(target,target_index,target_side,foes,allies,events)
         elif foes[target_index] is target:
-            foes[target_index]=None
-            pending_deaths.append((target,target_index,target_side,foes,allies))
+            queue_pending_death(pending_deaths,target,target_index,target_side,foes,allies)
     return dead
 
 def deal_spell_damage(source, source_index, side, allies, foes, target_index, target, base, events, source_effect=None, pending_deaths=None):
@@ -419,11 +434,8 @@ def deal_spell_damage(source, source_index, side, allies, foes, target_index, ta
         if pending_deaths is None:
             handle_unit_death(target,target_index,target_side,foes,allies,events)
         elif foes[target_index] is target:
-            # Remove the defeated unit immediately so later hits in this same
-            # effect cannot select it. Its legacy/revival resolves only after
-            # the complete effect has finished.
-            foes[target_index]=None
-            pending_deaths.append((target,target_index,target_side,foes,allies))
+            # Keep the defeated unit in place until the complete effect ends.
+            queue_pending_death(pending_deaths,target,target_index,target_side,foes,allies)
     return dead
 
 def card_by_id(card_id):
@@ -496,7 +508,7 @@ def resolve_one_precombat_effect(phase, unit, idx, team, foes, side, events):
     if effect.get("type")=="random_bullet_damage":
         for _ in range(max(1,int(effect.get("hits",1) or 1))):
             if team[idx] is not unit or unit.get("current_hp",0)<=0: break
-            pair=random_target(foes)
+            pair=random_target(foes,include_dead=True)
             if not pair: break
             deal_bullet_damage(unit,idx,side,team,foes,pair[0],pair[1],effect.get("damage",0),events,source_effect=phase,pending_deaths=pending_deaths)
     elif effect.get("type")=="team_buff":
@@ -659,7 +671,7 @@ def deal_friendly_bullet_damage(source, source_index, side, allies, foes, target
     if dmg>0:
         record_damage_instance(side,allies,events)
     if dead and allies[target_index] is target:
-        allies[target_index]=None;pending_deaths.append((target,target_index,side,allies,foes))
+        queue_pending_death(pending_deaths,target,target_index,side,allies,foes)
 
 def dominant_faction_pool(allies):
     living=[u for u in allies if u and u.get("current_hp",0)>0]
@@ -685,12 +697,18 @@ def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
     pending_deaths=[]
     if legacy.get("type")=="all_units_bullet_damage":
         for _ in range(max(1,int(legacy.get("hits",1) or 1))):
-            for ti,target in list(enumerate(allies)):
-                if target and target.get("current_hp",0)>0:
-                    deal_friendly_bullet_damage(unit,unit_index,side,allies,foes,ti,target,legacy.get("damage",0),events,pending_deaths)
-            for ti,target in list(enumerate(foes)):
-                if target and target.get("current_hp",0)>0:
-                    deal_bullet_damage(unit,unit_index,side,allies,foes,ti,target,legacy.get("damage",0),events,source_effect="legacy",pending_deaths=pending_deaths)
+            ally_targets=[(ti,target) for ti,target in enumerate(allies) if target and target.get("current_hp",0)>0]
+            if not ally_targets:
+                corpse=random_target(allies,include_dead=True)
+                ally_targets=[corpse] if corpse else []
+            for ti,target in ally_targets:
+                deal_friendly_bullet_damage(unit,unit_index,side,allies,foes,ti,target,legacy.get("damage",0),events,pending_deaths)
+            foe_targets=[(ti,target) for ti,target in enumerate(foes) if target and target.get("current_hp",0)>0]
+            if not foe_targets:
+                corpse=random_target(foes,include_dead=True)
+                foe_targets=[corpse] if corpse else []
+            for ti,target in foe_targets:
+                deal_bullet_damage(unit,unit_index,side,allies,foes,ti,target,legacy.get("damage",0),events,source_effect="legacy",pending_deaths=pending_deaths)
     elif legacy.get("type")=="summon_and_gain_dominant_faction":
         summon_and_gain_dominant(unit,unit_index,side,allies,events,legacy.get("count",1))
     elif legacy.get("type")=="bullet_damage":
@@ -698,15 +716,15 @@ def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
         for _ in range(hits):
             if legacy.get("target")=="killer":
                 killer_index=unit.get("_killer_index")
-                pair=(killer_index,foes[killer_index]) if isinstance(killer_index,int) and 0<=killer_index<len(foes) and foes[killer_index] and foes[killer_index].get("current_hp",0)>0 else None
+                pair=(killer_index,foes[killer_index]) if isinstance(killer_index,int) and 0<=killer_index<len(foes) and foes[killer_index] and foes[killer_index].get("current_hp",0)>0 else random_target(foes,include_dead=True)
             else:
-                pair=random_target(foes) if legacy.get("target")=="random" else nearest_target(foes,unit_index)
+                pair=random_target(foes,include_dead=True) if legacy.get("target")=="random" else nearest_target(foes,unit_index,include_dead=True)
             if not pair: break
             deal_bullet_damage(unit,unit_index,side,allies,foes,pair[0],pair[1],base,events,source_effect="legacy",pending_deaths=pending_deaths)
     elif legacy.get("type")=="spell_damage":
         hits=int(legacy.get("hits",1)); base=int(legacy.get("damage",0))
         for _ in range(hits):
-            pair=random_target(foes) if legacy.get("target")=="random" else nearest_target(foes,unit_index)
+            pair=random_target(foes,include_dead=True) if legacy.get("target")=="random" else nearest_target(foes,unit_index,include_dead=True)
             if not pair: break
             deal_spell_damage(unit,unit_index,side,allies,foes,pair[0],pair[1],base,events,source_effect="legacy",pending_deaths=pending_deaths)
     elif legacy.get("type")=="team_buff":
@@ -723,7 +741,7 @@ def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
                 if not perform_attack_action(summoned_unit,summoned_index,side,allies,foes,events,source_effect="raid"): break
         hits=int(legacy.get("hits",1)); base=int(legacy.get("damage",0))+int(unit.get("bullet_damage",0) or 0)
         for _ in range(hits):
-            pair=random_target(foes) if legacy.get("target")=="random" else nearest_target(foes,unit_index)
+            pair=random_target(foes,include_dead=True) if legacy.get("target")=="random" else nearest_target(foes,unit_index,include_dead=True)
             if not pair: break
             deal_bullet_damage(unit,unit_index,side,allies,foes,pair[0],pair[1],base,events,source_effect="legacy",pending_deaths=pending_deaths)
     elif legacy.get("type")=="gain_four_seasons":
@@ -985,7 +1003,7 @@ def settle_battle(result, round_number, player_id="local"):
         row=con.execute("SELECT gold,health FROM players WHERE id=?",(player_id,)).fetchone()
         if not row: raise ValueError("\u73a9\u5bb6\u4e0d\u5b58\u5728")
         income=round_income(round_number); victory_bonus=1 if result["winner"]=="left" else 0; logistics_gold=int(result.get("logistics_gold",0) or 0); gold=row["gold"]+income+victory_bonus+logistics_gold; health=max(0,row["health"]-result["loss_damage"])
-        con.execute("UPDATE players SET gold=?,health=?,round=?,shop_discount=shop_discount+2 WHERE id=?",(gold,health,round_number+1,player_id))
+        con.execute("UPDATE players SET gold=?,health=?,round=?,shop_discount=shop_discount+2,total_gold_earned=total_gold_earned+? WHERE id=?",(gold,health,round_number+1,income+victory_bonus+logistics_gold,player_id))
     data=player(player_id); data.update({"gold":gold,"health":health,"income":income,"victory_bonus":victory_bonus,"logistics_gold":logistics_gold}); return data
 
 def enemy_board(round_number, shop_level=1):
