@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).parent
 DB_PATH = ROOT / "data" / "autochess.sqlite"
 SCHEMA_PATH = ROOT / "schema.sql"
+PORT = 11451
 SKILLS = [
  (f"ammo_pact_{lv}",f"\u94f3\u5f39\u534f\u7ea6.{lv}","skill","\u94f3\u5f39\u534f\u7ea6",lv,lv,f"\u9009\u62e91\u4e2a\u68cb\u5b50\uff0c\u4f7f\u5176\u83b7\u5f97+{lv}/+{lv}\u548c{(lv+1)//2}\u70b9\u94f3\u5f39\u5f3a\u5ea6","#9b6dff",(lv+1)//2) for lv in range(1,7)
 ]
@@ -1099,7 +1100,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self.json({"error":"not found"},404)
         except (KeyError,ValueError) as e: return self.json({"error":str(e)},400)
 
-def local_play_urls(port=8000):
+def local_play_urls(port=PORT):
     urls=[f"http://127.0.0.1:{port}"]
     try:
         host=socket.gethostname(); ips={ip for ip in socket.gethostbyname_ex(host)[2] if not ip.startswith("127.")}
@@ -1108,4 +1109,4 @@ def local_play_urls(port=8000):
     return urls
 
 if __name__=="__main__":
-    initialise_database(); print("Tavern mode play URLs:"); [print("  "+u) for u in local_play_urls()]; ThreadingHTTPServer(("0.0.0.0",8000),Handler).serve_forever()
+    initialise_database(); print("Tavern mode play URLs:"); [print("  "+u) for u in local_play_urls()]; ThreadingHTTPServer(("0.0.0.0",PORT),Handler).serve_forever()
