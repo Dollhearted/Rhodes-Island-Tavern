@@ -2,6 +2,8 @@
 from __future__ import annotations
 import copy, json, logging, math, random, re, socket, sqlite3
 from contextlib import contextmanager
+from contextvars import ContextVar
+from functools import wraps
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -13,7 +15,7 @@ PORT = 11451
 SKILLS = [
  (f"ammo_pact_{lv}",f"\u94f3\u5f39\u534f\u7ea6.{lv}","skill","\u94f3\u5f39\u534f\u7ea6",lv,lv,f"\u9009\u62e91\u4e2a\u68cb\u5b50\uff0c\u4f7f\u5176\u83b7\u5f97+{lv}/+{lv}\u548c{(lv+1)//2}\u70b9\u94f3\u5f39\u5f3a\u5ea6","#9b6dff",(lv+1)//2) for lv in range(1,7)
 ]
-AI_POWER = [4,4,4,7,9,15,30,50,70,80,100,150,200,300]
+AI_POWER = [None,None,5,5,5,8,10,20,30,50,100,200,300,400]
 SHOP_UPGRADE_BASE_COSTS = [5,7,9,11,13]
 MAX_SHOP_LEVEL = 6
 UNIT_CARD_COST = 3
@@ -319,6 +321,8 @@ def make_revived_unit(unit, team=None):
         revived["attack"]=int(base.get("attack",0) or 0)*2 if base else int(revived.get("attack",0) or 0)
         revived["max_hp"]=int(base.get("max_hp",1) or 1)*2 if base else int(revived.get("max_hp",1) or 1)
     revived["current_hp"] = revived.get("max_hp", 1)
+    revived.pop('_death_confirmed',None)
+    revived.pop('_venom_destroyed',None)
     revived.pop("revive", None)
     revived["mechanics"] = [m for m in revived.get("mechanics", []) if m != "revive"]
     for k in ("bullet_strength","bullet_strength_temp","bullet_power","ammo_strength","ammo_power","gun_strength","gun_power","summoned_by_phase"):
@@ -368,8 +372,40 @@ def friendly_legacy_trigger_count(team):
     )
 
 
+_effect_deaths=ContextVar('effect_deaths',default=None)
+
+def atomic_effect(fn):
+    @wraps(fn)
+    def wrapped(*args,**kwargs):
+        # These effect entry points receive events as their last positional argument
+        # (legacy has one additional effect argument).
+        events=kwargs['events'] if 'events' in kwargs else args[6 if fn.__name__=='resolve_one_precombat_effect' else 5]
+        if _effect_deaths.get() is not None: return fn(*args,**kwargs)
+        pending=[];token=_effect_deaths.set(pending)
+        events.append({'type':'effect_start'})
+        try:
+            result=fn(*args,**kwargs)
+        finally:
+            _effect_deaths.reset(token)
+        resolve_pending_deaths(pending,events)
+        events.append({'type':'effect_end'})
+        return result
+    return wrapped
+
+def can_receive_buff(unit):
+    return bool(unit and not unit.get('_death_confirmed') and not unit.get('_venom_destroyed') and
+                (unit.get('current_hp',unit.get('max_hp',1))>0 or _effect_deaths.get() is not None))
+
 def handle_unit_death(unit, unit_index, side, team, foes, events):
+    if unit.get('_death_confirmed') or not 0<=unit_index<len(team) or team[unit_index] is not unit: return
+    if unit.get('_venom_destroyed'): unit['current_hp']=0
+    if unit.get('current_hp',0)>0: return
+    if _effect_deaths.get() is not None:
+        queue_pending_death(_effect_deaths.get(),unit,unit_index,side,team,foes)
+        return
+    unit['_death_confirmed']=True
     team[unit_index]=None
+    events.append({'type':'death','side':side,'slot':unit_index+1,'from':unit['name']})
     legacy_trigger_index = 0
     while legacy_trigger_index < friendly_legacy_trigger_count(team):
         trigger_legacy(unit,unit_index,side,team,foes,events)
@@ -382,10 +418,14 @@ def handle_unit_death(unit, unit_index, side, team, foes, events):
 
 
 def resolve_pending_deaths(pending_deaths, events):
+    if _effect_deaths.get() is not None:
+        for entry in pending_deaths: queue_pending_death(_effect_deaths.get(),*entry)
+        return
     for unit,unit_index,side,team,foes in pending_deaths:
         # Damage effects settle as one atomic initiative/legacy effect. A unit
         # remains targetable until the effect ends, and dies only if it is
         # still at 0 HP then (an in-effect permanent HP gain may save it).
+        if unit.get('_venom_destroyed'): unit['current_hp']=0
         if 0<=unit_index<len(team) and team[unit_index] is unit and unit.get("current_hp",0)<=0:
             handle_unit_death(unit,unit_index,side,team,foes,events)
 
@@ -400,7 +440,7 @@ def record_damage_instances(side, team, events, amount=1):
     if not amount: return
     for idx,u in enumerate(team):
         # 同一效果内的多次伤害可以批量计数；伤害动画全部完成后，再逐次结算增益。
-        if not u: continue
+        if not u or u.get('_death_confirmed') or u.get('_venom_destroyed'): continue
         eff=cumulative_damage_effect(u)
         if not eff: continue
         key=eff.get("counter_key","cumulative_damage_count"); threshold=max(1,int(eff.get("threshold",3) or 3))
@@ -492,26 +532,28 @@ def apply_golden_unit(unit):
     return unit
 
 def trigger_morale(unit, unit_index, side, events, source_effect=None, team=None):
+    if unit.get('_death_confirmed'): return
     effect=unit.get("morale") or {}
     if not effect or source_effect=="morale": return
     atk=int(effect.get("attack",0) or 0); hp=int(effect.get("max_hp",0) or effect.get("hp",0) or 0)
     if not (atk or hp): return
     targets=[(unit_index,unit)]
     if effect.get("type")=="random_other_buff":
-        candidates=[(i,u) for i,u in enumerate(team or []) if i!=unit_index and u and u.get("current_hp",u.get("max_hp",1))>0]
+        candidates=[(i,u) for i,u in enumerate(team or []) if i!=unit_index and can_receive_buff(u)]
         if not candidates: return
         targets=[random.choice(candidates)]
     elif effect.get("type") in ("team_hp_buff","team_attack_buff","team_buff"):
-        targets=[(i,u) for i,u in enumerate(team or []) if u and u.get("current_hp",u.get("max_hp",1))>0]
+        targets=[(i,u) for i,u in enumerate(team or []) if can_receive_buff(u)]
     elif effect.get("type")=="faction_team_buff":
         faction=effect.get("faction")
-        targets=[(i,u) for i,u in enumerate(team or []) if u and u.get("current_hp",u.get("max_hp",1))>0 and belongs_to_faction(u,faction)]
+        targets=[(i,u) for i,u in enumerate(team or []) if can_receive_buff(u) and belongs_to_faction(u,faction)]
     for target_index,target in targets:
         apply_unit_buff(target,atk,hp,unit_index=target_index,side=side,events=events,source_effect="morale",team=team)
         events.append({"type":"permanent_buff","side":side,"slot":target_index+1,"from":unit["name"],"from_slot":unit_index+1,"to":target["name"],"mechanic":"morale","source_effect":"morale","attack_gain":atk,"max_hp_gain":hp,"attack":target.get("attack",0),"max_hp":target.get("max_hp",1),"current_hp":target.get("current_hp",target.get("max_hp",1))})
 
 
 def apply_unit_buff(unit, atk=0, hp=0, bullet_strength_gain=0, bullet_damage_gain=0, *, unit_index=None, side=None, events=None, source_effect=None, team=None):
+    if unit.get('_death_confirmed'): return
     improved=any(int(v or 0)>0 for v in (atk,hp,bullet_strength_gain,bullet_damage_gain))
     if atk: unit["attack"]=int(unit.get("attack",0) or 0)+int(atk)
     if hp:
@@ -520,6 +562,7 @@ def apply_unit_buff(unit, atk=0, hp=0, bullet_strength_gain=0, bullet_damage_gai
         unit["current_hp"]=int(unit.get("current_hp",old_hp) or 0)+int(hp)
     if bullet_strength_gain: unit["bullet_strength"]=int(unit.get("bullet_strength",0) or 0)+int(bullet_strength_gain)
     if bullet_damage_gain: unit["bullet_damage"]=int(unit.get("bullet_damage",0) or 0)+int(bullet_damage_gain)
+    if unit.get('_venom_destroyed'): unit['current_hp']=0
     if improved and events is not None and unit_index is not None and side is not None:
         trigger_morale(unit,unit_index,side,events,source_effect,team)
 
@@ -528,7 +571,7 @@ def apply_team_buff(source, source_index, side, team, effect, events, source_eff
     atk=int(effect.get("attack",0) or 0); hp=int(effect.get("max_hp",0) or effect.get("hp",0) or 0); bs=int(effect.get("bullet_strength",0) or 0)
     exclude_self=bool(effect.get("exclude_self"))
     for ti,target in enumerate(team):
-        if not target or target.get("current_hp",target.get("max_hp",1))<=0: continue
+        if not can_receive_buff(target): continue
         if exclude_self and ti==source_index: continue
         apply_unit_buff(target,atk,hp,bs,unit_index=ti,side=side,events=events,source_effect=source_effect,team=team)
         ev={"type":"team_buff","side":side,"slot":ti+1,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"attack_gain":atk,"max_hp_gain":hp,"bullet_strength_gain":bs,"attack":target.get("attack",0),"max_hp":target.get("max_hp",1),"current_hp":target.get("current_hp",target.get("max_hp",1)),"bullet_strength":target.get("bullet_strength",0)}
@@ -542,6 +585,7 @@ def friendly_initiative_trigger_count(team):
                     for u in team if u and u.get("current_hp",0)>0])
 
 
+@atomic_effect
 def resolve_one_precombat_effect(phase, unit, idx, team, foes, side, events):
     effect=unit.get(phase) or {}
     pending_deaths=[]
@@ -747,13 +791,16 @@ def finish_bullet_batch(side, team, events, start):
     record_damage_instances(side,team,events,hits)
 
 
+@atomic_effect
 def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
     legacy=legacy or {}
     pending_deaths=[]
     if legacy.get("type")=="all_units_bullet_damage":
         cumulative_hits=0
-        events.append({"type":"w_barrage_start","side":side,"from":unit["name"],"from_slot":unit_index+1,"source_effect":"legacy"})
-        for _ in range(max(1,int(legacy.get("hits",1) or 1))):
+        for volley in range(max(1,int(legacy.get("hits",1) or 1))):
+            # Each hit is one simultaneous volley; golden W plays two volleys.
+            volley_hits=cumulative_hits
+            events.append({"type":"w_barrage_start","side":side,"from":unit["name"],"from_slot":unit_index+1,"source_effect":"legacy","volley":volley+1})
             ally_targets=[(ti,target) for ti,target in enumerate(allies) if target and target.get("current_hp",0)>0]
             if not ally_targets:
                 corpse=random_target(allies,include_dead=True)
@@ -770,7 +817,8 @@ def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
                 base_damage=int(legacy.get("damage",0) or 0)
                 deal_bullet_damage(unit,unit_index,side,allies,foes,ti,target,base_damage,events,source_effect="legacy",pending_deaths=pending_deaths,record_cumulative=False)
                 if base_damage+bullet_strength(unit)>0: cumulative_hits+=1
-        events.append({"type":"w_barrage_end","side":side,"from":unit["name"],"from_slot":unit_index+1,"source_effect":"legacy","damage_instances":cumulative_hits})
+            events.append({"type":"w_barrage_end","side":side,"from":unit["name"],"from_slot":unit_index+1,"source_effect":"legacy","volley":volley+1,"damage_instances":cumulative_hits-volley_hits})
+        # Counters and their separate buffs still resolve after ALL volleys.
         record_damage_instances(side,allies,events,cumulative_hits)
     elif legacy.get("type")=="summon_and_gain_dominant_faction":
         summon_and_gain_dominant(unit,unit_index,side,allies,events,legacy.get("count",1))
@@ -973,6 +1021,7 @@ def deal_cleave_damage(source, source_index, side, allies, foes, target_index, t
     if dead and foes[target_index] is target:
         queue_pending_death(pending_deaths,target,target_index,target_side,foes,allies)
 
+@atomic_effect
 def perform_attack_action(attacker, idx, side, mine, foes, events, round_number=1, source_effect=None):
     if idx>=len(mine) or mine[idx] is not attacker or attacker.get("current_hp",0)<=0: return False
     if not any(u and u.get("current_hp",0)>0 for u in foes): return False
@@ -1079,6 +1128,18 @@ def settle_battle(result, round_number, player_id="local"):
         con.execute("UPDATE players SET gold=?,health=?,round=?,shop_discount=shop_discount+2,total_gold_earned=total_gold_earned+? WHERE id=?",(gold,health,round_number+1,income+victory_bonus+logistics_gold,player_id))
     data=player(player_id); data.update({"gold":gold,"health":health,"income":income,"victory_bonus":victory_bonus,"logistics_gold":logistics_gold}); return data
 
+def enemy_selection_weights(pool, round_number, shop_level):
+    bias=0.35+round_number/5
+    weights=[1+max(0,c['stars']-1)*bias for c in pool]
+    higher=[i for i,c in enumerate(pool) if c['stars']>shop_level]
+    regular=[i for i,c in enumerate(pool) if c['stars']<=shop_level]
+    # Fix the total X+1 probability at 15%, regardless of pool size/round.
+    if higher and regular:
+        for indices,probability in ((higher,0.15),(regular,0.85)):
+            total=sum(weights[i] for i in indices)
+            for i in indices: weights[i]=weights[i]/total*probability
+    return weights
+
 def enemy_board(round_number, shop_level=1):
     if not 1<=round_number<=14: return [None]*7
     amount=1 if round_number<=2 else 2 if round_number==3 else 4 if round_number==4 else 6 if round_number==5 else 7
@@ -1087,16 +1148,17 @@ def enemy_board(round_number, shop_level=1):
     # alter this pool nor consume this independent random source.
     max_stars=1 if round_number==1 else max(1,min(MAX_SHOP_LEVEL,int(shop_level or 1)+1))
     pool=[c for c in cards() if c["card_type"]=="unit" and int(c.get("stars",c.get("tier",1)) or 1)<=max_stars]
-    board=[None]*7; star_bias=0.35+round_number/5; ai_random=random.SystemRandom()
+    board=[None]*7; ai_random=random.SystemRandom()
+    weights=enemy_selection_weights(pool,round_number,shop_level)
     for i in range(amount):
-        base=ai_random.choices(pool,weights=[1+max(0,c["stars"]-1)*star_bias for c in pool],k=1)[0]
+        base=ai_random.choices(pool,weights=weights,k=1)[0]
         card=dict(base)
-        # Keep the chosen unit's original attack and HP as hard floors; low
-        # early-round targets may need to rise to the unit's base stat total.
-        target=max(AI_POWER[round_number-1],int(base["attack"])+int(base["max_hp"]))
-        ratio=ai_random.uniform(.35,.65) if round_number>=5 else ai_random.uniform(.2,.8)
-        card["attack"]=min(target-int(base["max_hp"]),max(int(base["attack"]),round(target*ratio)))
-        card["max_hp"]=target-card["attack"]
+        # Rounds 1-2 retain original stats. Later totals are exact, even if
+        # the original unit is stronger; each stat receives 40%-60% of total.
+        target=AI_POWER[round_number-1]
+        if target is not None:
+            card["attack"]=ai_random.randint(math.ceil(target*0.4),math.floor(target*0.6))
+            card["max_hp"]=target-card["attack"]
         card["current_hp"]=card["max_hp"]; card["name"]=f"{card['name']}\u00b7{card['stars']}\u661f"; board[i]=card
     return board
 

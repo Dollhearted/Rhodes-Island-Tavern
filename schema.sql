@@ -265,7 +265,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 惊蛰 / Leizi
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Leizi','惊蛰','炎干员','炎',1,3,2,1,'#f2c94c','战意：自身永久获得+1/+1','{"mechanics":["morale","permanent"],"morale":{"attack":1,"max_hp":1},"golden_description":"战意：自身永久获得+2/+2","golden_overrides":{"description":"战意：自身永久获得+2/+2","morale":{"attack":2,"max_hp":2}}}')
+VALUES ('Leizi','惊蛰','炎干员','炎',1,3,2,1,'#f2c94c','化境：自身永久获得+1/+1','{"mechanics":["morale","permanent"],"morale":{"attack":1,"max_hp":1},"golden_description":"化境：自身永久获得+2/+2","golden_overrides":{"description":"化境：自身永久获得+2/+2","morale":{"attack":2,"max_hp":2}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
@@ -305,7 +305,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 夕 / Dusk
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Dusk','夕','炎干员','炎',2,2,3,1,'#f2c94c','护盾；战意：使1个友方其他棋子永久获得+2/+1','{"mechanics":["shield","morale","permanent"],"shield":true,"morale":{"type":"random_other_buff","attack":2,"max_hp":1},"golden_description":"护盾；战意：使1个友方其他棋子永久获得+4/+2","golden_overrides":{"description":"护盾；战意：使1个友方其他棋子永久获得+4/+2","morale":{"type":"random_other_buff","attack":4,"max_hp":2}}}')
+VALUES ('Dusk','夕','炎干员','炎',2,2,3,1,'#f2c94c','护盾；化境：使1个友方其他棋子永久获得+2/+1','{"mechanics":["shield","morale","permanent"],"shield":true,"morale":{"type":"random_other_buff","attack":2,"max_hp":1},"golden_description":"护盾；化境：使1个友方其他棋子永久获得+4/+2","golden_overrides":{"description":"护盾；化境：使1个友方其他棋子永久获得+4/+2","morale":{"type":"random_other_buff","attack":4,"max_hp":2}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
@@ -325,7 +325,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 仇白 / Qiubai
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Qiubai','仇白','炎干员','炎',3,4,3,1,'#f2c94c','战意：使所有友方棋子永久获得+1生命','{"mechanics":["morale","permanent"],"morale":{"type":"team_hp_buff","max_hp":1},"golden_description":"战意：使所有友方棋子永久获得+2生命","golden_overrides":{"description":"战意：使所有友方棋子永久获得+2生命","morale":{"type":"team_hp_buff","max_hp":2}}}')
+VALUES ('Qiubai','仇白','炎干员','炎',3,4,3,1,'#f2c94c','化境：使所有友方棋子永久获得+1生命','{"mechanics":["morale","permanent"],"morale":{"type":"team_hp_buff","max_hp":1},"golden_description":"化境：使所有友方棋子永久获得+2生命","golden_overrides":{"description":"化境：使所有友方棋子永久获得+2生命","morale":{"type":"team_hp_buff","max_hp":2}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
@@ -375,7 +375,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 星熊 / Hoshiguma
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Hoshiguma','星熊','炎干员','炎',4,4,6,1,'#f2c94c','护盾；战意：自身永久获得+2/+2','{"mechanics":["shield","morale","permanent"],"shield":true,"morale":{"attack":2,"max_hp":2},"golden_description":"护盾；战意：自身永久获得+4/+4","golden_overrides":{"description":"护盾；战意：自身永久获得+4/+4","morale":{"attack":4,"max_hp":4}}}')
+VALUES ('Hoshiguma','星熊','炎干员','炎',4,4,6,1,'#f2c94c','护盾；化境：自身永久获得+2/+2','{"mechanics":["shield","morale","permanent"],"shield":true,"morale":{"attack":2,"max_hp":2},"golden_description":"护盾；化境：自身永久获得+4/+4","golden_overrides":{"description":"护盾；化境：自身永久获得+4/+4","morale":{"attack":4,"max_hp":4}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
@@ -545,7 +545,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 陈 / Ch'en
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Ch''en','陈','炎干员','炎',5,5,7,1,'#f2c94c','横斩；战意：使所有友方棋子永久获得+1攻击力','{"mechanics":["cleave","morale","permanent"],"cleave":true,"morale":{"type":"team_attack_buff","attack":1},"golden_description":"横斩；战意：使所有友方棋子永久获得+2攻击力","golden_overrides":{"description":"横斩；战意：使所有友方棋子永久获得+2攻击力","morale":{"type":"team_attack_buff","attack":2}}}')
+VALUES ('Ch''en','陈','炎干员','炎',5,5,7,1,'#f2c94c','横斩；化境：使所有友方棋子永久获得+1攻击力','{"mechanics":["cleave","morale","permanent"],"cleave":true,"morale":{"type":"team_attack_buff","attack":1},"golden_description":"横斩；化境：使所有友方棋子永久获得+2攻击力","golden_overrides":{"description":"横斩；化境：使所有友方棋子永久获得+2攻击力","morale":{"type":"team_attack_buff","attack":2}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
@@ -577,7 +577,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 重岳 / Chongyue
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Chongyue','重岳','炎干员','炎',6,7,5,1,'#f2c94c','战意：使友方炎阵营棋子永久获得+1/+1','{"mechanics":["morale","permanent"],"morale":{"type":"faction_team_buff","faction":"炎","attack":1,"max_hp":1},"golden_description":"战意：使友方炎阵营棋子永久获得+2/+2","golden_overrides":{"description":"战意：使友方炎阵营棋子永久获得+2/+2","morale":{"type":"faction_team_buff","faction":"炎","attack":2,"max_hp":2}}}')
+VALUES ('Chongyue','重岳','炎干员','炎',6,7,5,1,'#f2c94c','化境：使友方炎阵营棋子永久获得+1/+1','{"mechanics":["morale","permanent"],"morale":{"type":"faction_team_buff","faction":"炎","attack":1,"max_hp":1},"golden_description":"化境：使友方炎阵营棋子永久获得+2/+2","golden_overrides":{"description":"化境：使友方炎阵营棋子永久获得+2/+2","morale":{"type":"faction_team_buff","faction":"炎","attack":2,"max_hp":2}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
