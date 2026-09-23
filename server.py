@@ -141,6 +141,12 @@ def cards():
     for lv in range(1,MAX_SHOP_LEVEL+1):
         debuff=gift_debuff[lv-1]; atk,hp=gift_logistics[lv-1]
         skills.append({"id":f"gift_exchange_{lv}","name":f"\u793c\u5c1a\u5f80\u6765.{lv}","card_type":"skill","faction":"\u6280\u80fd","cost":lv,"effect_value":0,"description":f"\u9009\u62e91\u4e2a\u90e8\u5c06\uff0c\u4f7f\u5176-{debuff}/-{debuff}\uff0c\u5e76\u83b7\u5f97\u3010\u540e\u52e4\uff1a\u81ea\u8eab\u83b7\u5f97+{atk}/+{hp}\u3011","color":"#e6a94a","bullet_strength":0,"target_scope":"single_unit","effect":"gift_exchange","stat_penalty":debuff,"permanent_logistics_attack":atk,"permanent_logistics_hp":hp,"mechanics":["logistics"],"unit_id":None,"stars":0})
+    for lv in range(1,MAX_SHOP_LEVEL+1):
+        amount=math.ceil((lv+1)/2)
+        skills.append(dict(id=f'enemy_sorrow_{lv}',name=f'挥斩敌愁.{lv}',card_type='skill',faction='技能',cost=lv,effect_value=lv,
+            description=f'选择1个友方棋子获得+{lv}/+{lv}，并获得1回合【血战：自身永久获得+{amount}/+{amount}】',
+            color='#ff526e',bullet_strength=0,target_scope='single_unit',effect='enemy_sorrow',bloodbattle_amount=amount,
+            mechanics=['permanent'],unit_id=None,stars=0))
     return sorted(units+skills,key=lambda c:(card_tier(c),c["id"]))
 
 def card_tier(card): return card["tier"] if card.get("card_type")=="unit" else card["cost"]
@@ -259,8 +265,20 @@ def apply_venom_after_damage(source, target, damage):
     target["_venom_destroyed"]=True
     return True
 
-def mark_killer(unit, killer_index):
+def mark_killer(unit, killer_index, source=None, source_effect=None):
     unit["_killer_index"]=int(killer_index)
+    if '_blood_killer' not in unit:
+        unit['_blood_killer']=[int(killer_index),id(source)] if source is not None and source_effect!='legacy' else None
+
+
+def trigger_bloodbattle(victim, side, foes, events, opponents=None):
+    credit=victim.pop('_blood_killer',None)
+    if not credit: return
+    idx,identity=credit
+    source=foes[idx] if 0<=idx<len(foes) else None
+    if not source or id(source)!=identity or source.get('_death_confirmed') or source.get('_venom_destroyed'): return
+    resolve_bloodbattle(source,idx,'right' if side=='left' else 'left',foes,opponents or [],events)
+
 
 def choose_target(foes):
     living=[(i,u) for i,u in enumerate(foes) if u and u.get("current_hp",0)>0]; guards=[(i,u) for i,u in living if is_guard(u)]; return random.choice(guards or living)
@@ -328,6 +346,8 @@ def make_revived_unit(unit, team=None):
     for k in ("bullet_strength","bullet_strength_temp","bullet_power","ammo_strength","ammo_power","gun_strength","gun_power","summoned_by_phase"):
         revived.pop(k, None)
     apply_round_aura_to_unit(revived,team or [],unit)
+    revived["enemy_death_copy_count"]=int(unit.get("enemy_death_copy_count",0))
+    revived["enemy_death_growth_count"]=int(unit.get("enemy_death_growth_count",0))
     revived["summoned_by_revival"] = True
     return revived
 
@@ -392,9 +412,97 @@ def atomic_effect(fn):
         return result
     return wrapped
 
+def bloodbattle_gain(source, idx, side, team, events, amount, permanent=True):
+    if amount<=0: return
+    effect='bloodbattle' if permanent else 'aura_bloodbattle'
+    apply_unit_buff(source,amount,amount,unit_index=idx,side=side,events=events,source_effect=effect,team=team)
+    events.append(dict(type='permanent_buff' if permanent else 'team_buff',side=side,slot=idx+1,from_slot=idx+1,
+        **{'from':source['name'],'to':source['name']},mechanic='bloodbattle',source_effect=effect,
+        attack_gain=amount,max_hp_gain=amount,attack=source['attack'],max_hp=source['max_hp'],current_hp=source['current_hp']))
+
+
+def leftmost_bullet_growth(source, idx, side, team, foes, events, effect):
+    target=next(((i,u) for i,u in enumerate(foes) if u and u.get('current_hp',0)>0),None)
+    if target:
+        deal_bullet_damage(source,idx,side,team,foes,*target,effect.get('damage',0),events,source_effect='bloodbattle')
+    bloodbattle_gain(source,idx,side,team,events,int(effect.get('growth',0)))
+
+
+@atomic_effect
+def resolve_bloodbattle(source, idx, side, team, foes, events):
+    if source.get('_death_confirmed') or source.get('_venom_destroyed'): return
+    intrinsic=source.get('bloodbattle',0)
+    if isinstance(intrinsic,dict):
+        if intrinsic.get('type')=='gain_gold':
+            events.append(dict(type='gain_gold',side=side,slot=idx+1,from_slot=idx+1,**{'from':source['name']},amount=int(intrinsic.get('amount',1)),source_effect='bloodbattle'))
+        elif intrinsic.get('type')=='team_growth_shop_bullet':
+            for ti,target in enumerate(team):
+                if can_receive_buff(target): bloodbattle_gain(target,ti,side,team,events,int(intrinsic.get('amount',1)))
+            target=next(((i,u) for i,u in enumerate(foes) if u and u.get('current_hp',0)>0),None)
+            if target:
+                damage=max(1,min(6,int(source.get('battle_shop_level',1))))*int(intrinsic.get('multiplier',1))
+                deal_bullet_damage(source,idx,side,team,foes,*target,damage,events,source_effect='bloodbattle')
+        elif intrinsic.get('type')=='shield_growth':
+            had_shield=has_shield(source)
+            bloodbattle_gain(source,idx,side,team,events,int(intrinsic.get('amount',0)))
+            if had_shield: bloodbattle_gain(source,idx,side,team,events,int(intrinsic.get('extra',0)))
+            source['shield']=True
+            source['mechanics']=list(dict.fromkeys([*source.get('mechanics',[]),'shield']))
+            events.append(dict(type='grant_shield',side=side,slot=idx+1,**{'from':source['name']}))
+        elif intrinsic.get('type')=='team_faction_growth':
+            for target in team:
+                if can_receive_buff(target):
+                    ti=next(i for i,u in enumerate(team) if u is target)
+                    bloodbattle_gain(target,ti,side,team,events,int(intrinsic.get('amount',0)))
+                    if belongs_to_faction(target,intrinsic.get('faction')):
+                        bloodbattle_gain(target,ti,side,team,events,int(intrinsic.get('extra',0)))
+        elif intrinsic.get('type')=='leftmost_bullet_growth': leftmost_bullet_growth(source,idx,side,team,foes,events,intrinsic)
+    else: bloodbattle_gain(source,idx,side,team,events,int(intrinsic or 0))
+    for amount in source.get('temporary_bloodbattle',[]): bloodbattle_gain(source,idx,side,team,events,int(amount))
+    # Aura is derived from current board membership; no permanent copied keyword.
+    for ally in team:
+        if ally and not ally.get('_death_confirmed') and ally.get('bloodbattle_aura'):
+            bloodbattle_gain(source,idx,side,team,events,int(ally['bloodbattle_aura']),False)
+
+
 def can_receive_buff(unit):
     return bool(unit and not unit.get('_death_confirmed') and not unit.get('_venom_destroyed') and
                 (unit.get('current_hp',unit.get('max_hp',1))>0 or _effect_deaths.get() is not None))
+
+def trigger_enemy_death_copy(victim, side, watchers, events):
+    for idx,watcher in enumerate(watchers):
+        if not watcher or watcher.get('_death_confirmed') or watcher.get('_venom_destroyed') or watcher.get('current_hp',0)<=0: continue
+        limit=int(watcher.get('enemy_death_copy_limit',0));used=int(watcher.get('enemy_death_copy_count',0))
+        if used>=limit: continue
+        card=card_by_id(victim.get('id'))
+        if not card: continue
+        watcher['enemy_death_copy_count']=used+1
+        events.append(dict(type='gain_card',side='right' if side=='left' else 'left',from_slot=idx+1,
+            **{'from':watcher['name']},card=card,card_id=card['id'],card_name=card['name'],source_effect='enemy_death_copy'))
+
+
+@atomic_effect
+def resolve_enemy_death_growth(source, idx, side, team, foes, events):
+    effect=source.get('enemy_death_growth') or {}
+    used=int(source.get('enemy_death_growth_count',0))
+    if used>=int(effect.get('limit',0)): return
+    # Consume the charge before bloodbattle can cause further death events.
+    source['enemy_death_growth_count']=used+1
+    targets=[(i,u) for i,u in enumerate(team) if can_receive_buff(u)]
+    for ti,target in targets:
+        bloodbattle_gain(target,ti,side,team,events,int(effect.get('amount',0)))
+    for ti,target in targets:
+        if team[ti] is target and not target.get('_death_confirmed'):
+            resolve_bloodbattle(target,ti,side,team,foes,events)
+
+
+def trigger_enemy_death_growth(side, watchers, opponents, events):
+    source_side='right' if side=='left' else 'left'
+    for idx,watcher in enumerate(watchers):
+        if not watcher or watcher.get('_death_confirmed') or watcher.get('_venom_destroyed') or watcher.get('current_hp',0)<=0: continue
+        if watcher.get('enemy_death_growth'):
+            resolve_enemy_death_growth(watcher,idx,source_side,watchers,opponents,events)
+
 
 def handle_unit_death(unit, unit_index, side, team, foes, events):
     if unit.get('_death_confirmed') or not 0<=unit_index<len(team) or team[unit_index] is not unit: return
@@ -406,6 +514,9 @@ def handle_unit_death(unit, unit_index, side, team, foes, events):
     unit['_death_confirmed']=True
     team[unit_index]=None
     events.append({'type':'death','side':side,'slot':unit_index+1,'from':unit['name']})
+    trigger_enemy_death_copy(unit,side,foes,events)
+    trigger_enemy_death_growth(side,foes,team,events)
+    trigger_bloodbattle(unit,side,foes,events,team)
     legacy_trigger_index = 0
     while legacy_trigger_index < friendly_legacy_trigger_count(team):
         trigger_legacy(unit,unit_index,side,team,foes,events)
@@ -421,7 +532,7 @@ def resolve_pending_deaths(pending_deaths, events):
     if _effect_deaths.get() is not None:
         for entry in pending_deaths: queue_pending_death(_effect_deaths.get(),*entry)
         return
-    for unit,unit_index,side,team,foes in pending_deaths:
+    for unit,unit_index,side,team,foes in sorted(pending_deaths,key=lambda entry: not bool(entry[0].get('_blood_killer'))):
         # Damage effects settle as one atomic initiative/legacy effect. A unit
         # remains targetable until the effect ends, and dies only if it is
         # still at 0 HP then (an in-effect permanent HP gain may save it).
@@ -474,12 +585,13 @@ def deal_bullet_damage(source, source_index, side, allies, foes, target_index, t
         events.append({"type":"shield_block","projectile":"bullet","side":target_side,"slot":target_index+1,"from":target["name"],"source":source.get("name",""),"source_side":side,"source_slot":source_index+1,"damage_blocked":dmg})
         if record_cumulative: record_damage_instance(side,allies,events)
         return False
+    if target.get("current_hp",0)>0: target.pop("_blood_killer",None)
     target["current_hp"]-=dmg
     trigger_injury_growth(target,target_index,target_side,foes,events,dmg)
     venom_triggered=apply_venom_after_damage(source,target,dmg)
     dead=target["current_hp"]<=0
-    if dead: mark_killer(target,source_index)
-    event={"side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":target_side,"damage_type":"bullet","damage":dmg,"bullet_base_damage":int(base),"bullet_strength":strength,"counter_damage":0,"target_hp":max(0,target["current_hp"]),"attacker_hp":max(0,source.get("current_hp",source.get("max_hp",0))),"target_dead":dead,"attacker_dead":False,"venom_triggered":venom_triggered}
+    if dead: mark_killer(target,source_index,source,source_effect)
+    event={"side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":target_side,"damage_type":"bullet","damage":dmg,"bullet_base_damage":int(base),"bullet_strength":strength,"counter_damage":0,"target_hp":target["current_hp"],"attacker_hp":source.get("current_hp",source.get("max_hp",0)),"target_dead":dead,"attacker_dead":False,"venom_triggered":venom_triggered}
     if source_effect: event["source_effect"]=source_effect
     events.append(event)
     if dmg>0 and record_cumulative:
@@ -498,12 +610,13 @@ def deal_spell_damage(source, source_index, side, allies, foes, target_index, ta
     if dmg>0 and consume_shield(target):
         events.append({"type":"shield_block","side":target_side,"slot":target_index+1,"from":target["name"],"source":source.get("name",""),"source_side":side,"source_slot":source_index+1,"damage_blocked":dmg})
         return False
+    if target.get("current_hp",0)>0: target.pop("_blood_killer",None)
     target["current_hp"]-=dmg
     trigger_injury_growth(target,target_index,target_side,foes,events,dmg)
     venom_triggered=apply_venom_after_damage(source,target,dmg)
     dead=target["current_hp"]<=0
-    if dead: mark_killer(target,source_index)
-    event={"side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":target_side,"damage_type":"spell","damage":dmg,"spell_base_damage":int(base),"counter_damage":0,"target_hp":max(0,target["current_hp"]),"attacker_hp":max(0,source.get("current_hp",source.get("max_hp",0))),"target_dead":dead,"attacker_dead":False,"venom_triggered":venom_triggered}
+    if dead: mark_killer(target,source_index,source,source_effect)
+    event={"side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":target_side,"damage_type":"spell","damage":dmg,"spell_base_damage":int(base),"counter_damage":0,"target_hp":target["current_hp"],"attacker_hp":source.get("current_hp",source.get("max_hp",0)),"target_dead":dead,"attacker_dead":False,"venom_triggered":venom_triggered}
     if source_effect: event["source_effect"]=source_effect
     events.append(event)
     if dmg>0:
@@ -589,7 +702,31 @@ def friendly_initiative_trigger_count(team):
 def resolve_one_precombat_effect(phase, unit, idx, team, foes, side, events):
     effect=unit.get(phase) or {}
     pending_deaths=[]
-    if effect.get("type")=="random_bullet_damage":
+    if effect.get("type")=="leftmost_attack_bullet":
+        # Keep zero/negative-HP targets until all Tin Man shots have finished.
+        # Each shot prefers living enemies; only an empty living pool uses corpses.
+        for _ in range(friendly_initiative_trigger_count(team)):
+            candidates=[(i,u) for i,u in enumerate(foes) if u and u.get('current_hp',0)>0]
+            if not candidates: candidates=[(i,u) for i,u in enumerate(foes) if u and not u.get('_death_confirmed')]
+            if not candidates: break
+            ti,target=candidates[0]
+            deal_bullet_damage(unit,idx,side,team,foes,ti,target,int(unit.get('attack',0))*int(effect.get('multiplier',1)),events,source_effect=phase,pending_deaths=pending_deaths)
+    elif effect.get("type")=="adjacent_bloodbattle":
+        indices=[next((i for i in range(idx-1,-1,-1) if can_receive_buff(team[i])),None),next((i for i in range(idx+1,len(team)) if can_receive_buff(team[i])),None)]
+        targets=[(i,team[i]) for i in indices if i is not None]
+        for ti,target in targets:
+            bloodbattle_gain(target,ti,side,team,events,int(effect.get('amount',0)))
+        for ti,target in targets:
+            for _ in range(int(effect.get('triggers',1))):
+                if team[ti] is target and not target.get('_death_confirmed'): resolve_bloodbattle(target,ti,side,team,foes,events)
+    elif effect.get("type")=="leftmost_bullet_growth":
+        leftmost_bullet_growth(unit,idx,side,team,foes,events,effect)
+    elif effect.get("type")=="leftmost_set_hp":
+        targets=[(i,u) for i,u in enumerate(foes) if u and u.get('current_hp',0)>0][:int(effect.get('count',1))]
+        for ti,target in targets:
+            target['current_hp']=1
+            events.append(dict(type='set_hp',side='right' if side=='left' else 'left',slot=ti+1,current_hp=1,source_effect=phase))
+    elif effect.get("type")=="random_bullet_damage":
         batch_start=len(events)
         events.append({"type":"bullet_batch_start"})
         for _ in range(max(1,int(effect.get("hits",1) or 1))):
@@ -698,6 +835,7 @@ def resolve_precombat_phase(phase, left, right, start_side, events):
                     while team[idx] is unit and unit.get("current_hp",0)>0:
                         if repetition>=friendly_initiative_trigger_count(team): break
                         resolve_one_precombat_effect("initiative",unit,idx,team,foes,side,events); repetition+=1
+                        if unit["initiative"].get("type")=="leftmost_attack_bullet": break
                 resolve_temporary_initiative_buffs(unit,idx,team,side,events)
                 break
         side="right" if side=="left" else "left"
@@ -756,8 +894,9 @@ def deal_friendly_bullet_damage(source, source_index, side, allies, foes, target
         events.append({"type":"shield_block","projectile":"bullet","side":side,"slot":target_index+1,"from":target["name"],"source":source.get("name",""),"source_side":side,"source_slot":source_index+1,"damage_blocked":dmg})
         if record_cumulative: record_damage_instance(side,allies,events)
         return
+    if target.get("current_hp",0)>0: target.pop("_blood_killer",None)
     target["current_hp"]-=dmg; trigger_injury_growth(target,target_index,side,allies,events,dmg); dead=target["current_hp"]<=0
-    event={"side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":side,"damage_type":"bullet","damage":dmg,"bullet_base_damage":int(base),"bullet_strength":0,"counter_damage":0,"target_hp":max(0,target["current_hp"]),"attacker_hp":max(0,source.get("current_hp",0)),"target_dead":dead,"attacker_dead":True,"source_effect":"legacy","friendly_fire":True}
+    event={"side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":side,"damage_type":"bullet","damage":dmg,"bullet_base_damage":int(base),"bullet_strength":0,"counter_damage":0,"target_hp":target["current_hp"],"attacker_hp":source.get("current_hp",0),"target_dead":dead,"attacker_dead":True,"source_effect":"legacy","friendly_fire":True}
     events.append(event)
     if dmg>0 and record_cumulative:
         record_damage_instance(side,allies,events)
@@ -795,7 +934,15 @@ def finish_bullet_batch(side, team, events, start):
 def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
     legacy=legacy or {}
     pending_deaths=[]
-    if legacy.get("type")=="all_units_bullet_damage":
+    if legacy.get("type")=="team_permanent_bloodbattle":
+        targets=[(i,u) for i,u in enumerate(allies) if can_receive_buff(u)]
+        for ti,target in targets:
+            bloodbattle_gain(target,ti,side,allies,events,int(legacy.get('amount',0)))
+        for ti,target in targets:
+            for _ in range(int(legacy.get('triggers',1))):
+                if allies[ti] is target and not target.get('_death_confirmed'):
+                    resolve_bloodbattle(target,ti,side,allies,foes,events)
+    elif legacy.get("type")=="all_units_bullet_damage":
         cumulative_hits=0
         for volley in range(max(1,int(legacy.get("hits",1) or 1))):
             # Each hit is one simultaneous volley; golden W plays two volleys.
@@ -902,7 +1049,7 @@ def friendly_logistics_trigger_count(team):
     )
 
 
-def apply_logistics_effects(team, side, events):
+def apply_logistics_effects(team, side, events, foes=None):
     trigger_count=friendly_logistics_trigger_count(team)
     for idx,u in enumerate(team):
         if not u or u.get("current_hp",u.get("max_hp",1))<=0: continue
@@ -940,6 +1087,7 @@ def apply_logistics_effects(team, side, events):
                         if not target or target.get("current_hp",target.get("max_hp",1))<=0: continue
                         apply_unit_buff(target,atk,hp,unit_index=ti,side=side,events=events,source_effect="logistics",team=team)
                         events.append({"type":"logistics_buff","side":side,"slot":ti+1,"from":u["name"],"from_slot":idx+1,"to":target["name"],"mechanic":"logistics","source_effect":"logistics","attack_gain":atk,"max_hp_gain":hp,"attack":target.get("attack",0),"max_hp":target.get("max_hp",1),"current_hp":target.get("current_hp",target.get("max_hp",1))})
+                        for _ in range(int(eff.get("bloodbattle_triggers",0))): resolve_bloodbattle(target,ti,side,team,foes or [],events)
                 continue
             atk=int(eff.get("attack",0) or 0); hp=int(eff.get("max_hp",0) or eff.get("hp",0) or 0); bd=int(eff.get("bullet_damage",0) or 0)
             apply_unit_buff(u,atk,hp,bullet_damage_gain=bd,unit_index=idx,side=side,events=events,source_effect="logistics",team=team)
@@ -1007,6 +1155,7 @@ def trigger_opponent_attack_reactions(attacker, attacker_index, side, mine, foes
     resolve_pending_deaths(pending,events)
 
 def deal_cleave_damage(source, source_index, side, allies, foes, target_index, target, damage, events, pending_deaths):
+    if target.get("current_hp",0)>0: target.pop("_blood_killer",None)
     target_side="right" if side=="left" else "left"; dmg=max(0,int(damage or 0)); blocked=False
     if dmg>0 and consume_shield(target):
         blocked=True
@@ -1016,8 +1165,8 @@ def deal_cleave_damage(source, source_index, side, allies, foes, target_index, t
         dealt=dmg;target["current_hp"]-=dealt
         trigger_injury_growth(target,target_index,target_side,foes,events,dealt)
     dead=target.get("current_hp",0)<=0
-    if dead: mark_killer(target,source_index)
-    events.append({"type":"cleave","side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":target_side,"damage_type":"cleave","damage":dealt,"attempted_damage":dmg,"shield_blocked":blocked,"counter_damage":0,"target_hp":max(0,target.get("current_hp",0)),"attacker_hp":max(0,source.get("current_hp",0)),"target_dead":dead,"attacker_dead":source.get("current_hp",0)<=0})
+    if dead: mark_killer(target,source_index,source)
+    events.append({"type":"cleave","side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":target_side,"damage_type":"cleave","damage":dealt,"attempted_damage":dmg,"shield_blocked":blocked,"counter_damage":0,"target_hp":target.get("current_hp",0),"attacker_hp":source.get("current_hp",0),"target_dead":dead,"attacker_dead":source.get("current_hp",0)<=0})
     if dead and foes[target_index] is target:
         queue_pending_death(pending_deaths,target,target_index,target_side,foes,allies)
 
@@ -1053,13 +1202,15 @@ def perform_attack_action(attacker, idx, side, mine, foes, events, round_number=
         events.append({"type":"shield_block","side":target_side,"slot":ti+1,"from":target["name"],"source":attacker["name"],"source_side":side,"source_slot":idx+1,"damage_blocked":dmg}); dmg=0
     if counter>0 and consume_shield(attacker):
         events.append({"type":"shield_block","side":side,"slot":idx+1,"from":attacker["name"],"source":target["name"],"source_side":target_side,"source_slot":ti+1,"damage_blocked":counter}); counter=0
+    if target.get("current_hp",0)>0: target.pop("_blood_killer",None)
+    attacker.pop("_blood_killer",None)
     target["current_hp"]-=dmg; attacker["current_hp"]-=counter
     trigger_injury_growth(target,ti,target_side,foes,events,dmg);trigger_injury_growth(attacker,idx,side,mine,events,counter)
     target_venom=apply_venom_after_damage(attacker,target,dmg); attacker_venom=apply_venom_after_damage(target,attacker,counter)
     target_dead=target["current_hp"]<=0; attacker_dead=attacker["current_hp"]<=0
-    if target_dead: mark_killer(target,idx)
+    if target_dead: mark_killer(target,idx,attacker,source_effect)
     if attacker_dead: mark_killer(attacker,ti)
-    attack_event={"side":side,"from":attacker["name"],"from_slot":idx+1,"to":target["name"],"to_slot":ti+1,"target_side":target_side,"damage_type":"collision","damage":dmg,"counter_damage":counter,"target_hp":max(0,target["current_hp"]),"attacker_hp":max(0,attacker["current_hp"]),"target_dead":target_dead,"attacker_dead":attacker_dead,"target_venom_triggered":target_venom,"attacker_venom_triggered":attacker_venom}
+    attack_event={"side":side,"from":attacker["name"],"from_slot":idx+1,"to":target["name"],"to_slot":ti+1,"target_side":target_side,"damage_type":"collision","damage":dmg,"counter_damage":counter,"target_hp":target["current_hp"],"attacker_hp":attacker["current_hp"],"target_dead":target_dead,"attacker_dead":attacker_dead,"target_venom_triggered":target_venom,"attacker_venom_triggered":attacker_venom}
     if source_effect: attack_event["source_effect"]=source_effect
     events.append(attack_event)
     if active_hit_attempted: record_damage_instance(side,mine,events)
@@ -1076,7 +1227,7 @@ def perform_attack_action(attacker, idx, side, mine, foes, events, round_number=
     if target.get("_venom_destroyed"): target["current_hp"]=0
     if attacker.get("_venom_destroyed"): attacker["current_hp"]=0
     target_dead=target["current_hp"]<=0; attacker_dead=attacker["current_hp"]<=0
-    attack_event.update({"target_hp":max(0,target["current_hp"]),"attacker_hp":max(0,attacker["current_hp"]),"target_dead":target_dead,"attacker_dead":attacker_dead})
+    attack_event.update({"target_hp":target["current_hp"],"attacker_hp":attacker["current_hp"],"target_dead":target_dead,"attacker_dead":attacker_dead})
     if target_dead and foes[ti] is target: handle_unit_death(target,ti,target_side,foes,mine,events)
     attacker_dead=attacker.get("current_hp",0)<=0
     if attacker_dead and mine[idx] is attacker: handle_unit_death(attacker,idx,side,mine,foes,events)
@@ -1091,11 +1242,18 @@ def tavern_battle(left,right,round_number=1,shop_level=1):
             if unit:
                 unit["battle_shop_level"]=max(1,min(MAX_SHOP_LEVEL,int(shop_level or 1)))
                 unit.pop("opponent_attack_trigger_count",None)
+                unit.pop("enemy_death_copy_count",None)
+                unit.pop("enemy_death_growth_count",None)
     turn=first_striker(left,right); cursor={"left":0,"right":0}; events=[]
-    apply_logistics_effects(left,"left",events); apply_logistics_effects(right,"right",events)
+    apply_logistics_effects(left,"left",events,right); apply_logistics_effects(right,"right",events,left)
     # Preserve a snapshot before temporary battle effects or deaths. The player
     # receives these permanent logistics gains even when the unit later dies.
     persistent_left=copy.deepcopy(left)
+    for event in events:
+        if event.get('side')=='left' and event.get('source_effect')=='aura_bloodbattle':
+            saved=persistent_left[event['slot']-1]
+            if saved:
+                saved['attack']-=event['attack_gain'];saved['max_hp']-=event['max_hp_gain']
     persistent_event_start=len(events)
     apply_temporary_logistics_effects(left,"left",events); apply_temporary_logistics_effects(right,"right",events)
     apply_battle_start_effects(left,"left",events); apply_battle_start_effects(right,"right",events)
@@ -1116,6 +1274,7 @@ def tavern_battle(left,right,round_number=1,shop_level=1):
     for saved in persistent_left:
         if saved:
             saved.pop("inherited_legacies",None)
+            saved.pop("temporary_bloodbattle",None)
             if not saved.get("legacy"):
                 saved["mechanics"]=[m for m in saved.get("mechanics",[]) if m!="legacy"]
     return {"winner":winner,"events":events,"left":left,"right":right,"persistent_left":persistent_left,"remaining_stars":remaining_stars,"loss_damage":loss_damage,"logistics_gold":logistics_gold}
@@ -1159,7 +1318,7 @@ def enemy_board(round_number, shop_level=1):
         if target is not None:
             card["attack"]=ai_random.randint(math.ceil(target*0.4),math.floor(target*0.6))
             card["max_hp"]=target-card["attack"]
-        card["current_hp"]=card["max_hp"]; card["name"]=f"{card['name']}\u00b7{card['stars']}\u661f"; board[i]=card
+        card["current_hp"]=card["max_hp"]; board[i]=card
     return board
 
 class Handler(SimpleHTTPRequestHandler):

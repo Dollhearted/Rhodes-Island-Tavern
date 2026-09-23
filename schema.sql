@@ -39,7 +39,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 安比尔 / Ambriel
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Ambriel','安比尔','拉特兰干员','拉特兰',1,1,3,1,'#e53935','先手：随机对1个敌人造成2铳弹伤害','{"mechanics":["initiative","bullet_damage"],"initiative":{"type":"random_bullet_damage","damage":2},"golden_description":"先手：对随机1个敌人造成4铳弹伤害","golden_overrides":{"description":"先手：对随机1个敌人造成4铳弹伤害","initiative":{"type":"random_bullet_damage","damage":4}}}')
+VALUES ('Ambriel','安比尔','拉特兰干员','拉特兰',2,3,2,1,'#e53935','嘲讽；复活；遗计：随机对1个敌人造成2铳弹伤害','{"mechanics":["guard","revive","legacy","bullet_damage"],"guard":true,"revive":true,"legacy":{"type":"bullet_damage","damage":2,"hits":1,"target":"random"},"golden_description":"嘲讽；复活；遗计：随机对1个敌人造成2铳弹伤害，2次","golden_overrides":{"description":"嘲讽；复活；遗计：随机对1个敌人造成2铳弹伤害，2次","legacy":{"type":"bullet_damage","damage":2,"hits":2,"target":"random"}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
@@ -69,7 +69,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 空构 / Spuria
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Spuria','空构','拉特兰干员','拉特兰',2,3,2,1,'#e53935','嘲讽；复活；遗计：随机对1个敌人造成2铳弹伤害','{"mechanics":["guard","revive","legacy","bullet_damage"],"guard":true,"revive":true,"legacy":{"type":"bullet_damage","damage":2,"hits":1,"target":"random"},"golden_description":"嘲讽；复活；遗计：随机对1个敌人造成2铳弹伤害，2次","golden_overrides":{"description":"嘲讽；复活；遗计：随机对1个敌人造成2铳弹伤害，2次","legacy":{"type":"bullet_damage","damage":2,"hits":2,"target":"random"}}}')
+VALUES ('Spuria','空构','拉特兰干员','拉特兰',3,2,2,1,'#e53935','上场：选择1个拉特兰棋子，使其获得+3/+3和复活','{"mechanics": ["on_deploy"], "on_deploy": {"type": "select_buff_revive", "faction": "拉特兰", "attack": 3, "max_hp": 3}, "golden_description": "上场：选择1个拉特兰棋子，使其获得+6/+6和复活", "golden_overrides": {"on_deploy": {"type": "select_buff_revive", "faction": "拉特兰", "attack": 6, "max_hp": 6}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
@@ -588,6 +588,187 @@ ON CONFLICT(id) DO UPDATE SET
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
 VALUES ('Nian','年','炎干员','炎',6,6,6,1,'#f2c94c','护盾；招募&后勤：获得1张【天有四时】','{"mechanics":["shield","recruit","logistics"],"shield":true,"recruit":{"type":"gain_four_seasons","count":1},"logistics":{"type":"gain_four_seasons","count":1},"golden_description":"护盾；招募&后勤：获得2张【天有四时】","golden_overrides":{"description":"护盾；招募&后勤：获得2张【天有四时】","recruit":{"type":"gain_four_seasons","count":2},"logistics":{"type":"gain_four_seasons","count":2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 维多利亚
+-- 格拉尼 / Grani
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Grani','格拉尼','维多利亚干员','维多利亚',1,2,3,1,'#5b2c83','血战：自身永久获得+1/+1','{"mechanics": ["bloodbattle", "permanent"], "bloodbattle": 1, "golden_description": "血战：自身永久获得+2/+2", "golden_overrides": {"bloodbattle": 2}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 谜图 / Puzzle
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Puzzle','谜图','维多利亚干员','维多利亚',1,1,3,1,'#5b2c83','先手：随机对1个敌人造成2铳弹伤害','{"mechanics": ["initiative", "bullet_damage"], "initiative": {"type": "random_bullet_damage", "damage": 2}, "golden_description": "先手：对随机1个敌人造成4铳弹伤害", "golden_overrides": {"description": "先手：对随机1个敌人造成4铳弹伤害", "initiative": {"type": "random_bullet_damage", "damage": 4}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 海蒂 / Heidi
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Heidi','海蒂','维多利亚干员','维多利亚',2,2,2,1,'#5b2c83','上场：选择1个友方，使其获得+2/+2并触发血战效果1次','{"mechanics": ["on_deploy"], "on_deploy": {"type": "select_buff_bloodbattle", "attack": 2, "max_hp": 2, "triggers": 1}, "golden_description": "上场：选择1个友方，使其获得+4/+4并触发2次血战效果", "golden_overrides": {"on_deploy": {"type": "select_buff_bloodbattle", "attack": 4, "max_hp": 4, "triggers": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 戴菲恩 / Delphine
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Delphine','戴菲恩','维多利亚干员','维多利亚',2,1,5,1,'#5b2c83','招募&售出：获得1张【挥斩敌愁】','{"mechanics": ["recruit", "sell"], "recruit": {"type": "gain_enemy_sorrow", "count": 1}, "sell": {"type": "gain_enemy_sorrow", "count": 1}, "golden_description": "招募&售出：获得2张【挥斩敌愁】", "golden_overrides": {"recruit": {"type": "gain_enemy_sorrow", "count": 2}, "sell": {"type": "gain_enemy_sorrow", "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 洛洛 / Rockrock
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Rockrock','洛洛','维多利亚干员','维多利亚',3,3,3,1,'#5b2c83','先手&血战：对最左侧的敌人造成3铳弹伤害，并自身永久获得+1/+1','{"mechanics": ["initiative", "bloodbattle", "permanent", "bullet_damage"], "initiative": {"type": "leftmost_bullet_growth", "damage": 3, "growth": 1}, "bloodbattle": {"type": "leftmost_bullet_growth", "damage": 3, "growth": 1}, "golden_description": "先手&血战：对最左侧的敌人造成4铳弹伤害，并自身永久获得+2/+2", "golden_overrides": {"initiative": {"type": "leftmost_bullet_growth", "damage": 4, "growth": 2}, "bloodbattle": {"type": "leftmost_bullet_growth", "damage": 4, "growth": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 琴柳 / Saileach
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Saileach','琴柳','维多利亚干员','维多利亚',3,4,2,1,'#5b2c83','上场&回营：获得1张【挥斩敌愁】','{"mechanics": ["on_deploy", "return_camp"], "on_deploy": {"type": "gain_enemy_sorrow", "count": 1}, "return_camp": {"type": "gain_enemy_sorrow", "count": 1}, "golden_description": "上场&回营：获得2张【挥斩敌愁】", "golden_overrides": {"on_deploy": {"type": "gain_enemy_sorrow", "count": 2}, "return_camp": {"type": "gain_enemy_sorrow", "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 薄绿 / Mint
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Mint','薄绿','维多利亚干员','维多利亚',3,3,2,1,'#5b2c83','后勤：使相邻的棋子获得+2/+2，并触发血战效果','{"mechanics": ["logistics"], "logistics": {"type": "adjacent_buff", "attack": 2, "max_hp": 2, "bloodbattle_triggers": 1}, "golden_description": "后勤：使相邻的棋子获得+4/+4，并触发2次血战效果", "golden_overrides": {"logistics": {"type": "adjacent_buff", "attack": 4, "max_hp": 4, "bloodbattle_triggers": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 哈洛德 / Harold
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Harold','哈洛德','维多利亚干员','维多利亚',3,4,3,1,'#5b2c83','光环：使所有友方棋子获得【血战：使自身获得+2/+2】','{"mechanics": ["aura"], "bloodbattle_aura": 2, "golden_description": "光环：使所有友方棋子获得【血战：使自身获得+4/+4】", "golden_overrides": {"bloodbattle_aura": 4}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 刺玫 / Vendela
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Vendela','刺玫','维多利亚干员','维多利亚',3,4,1,1,'#5b2c83','先手：将最左侧的敌方棋子变为1血','{"mechanics": ["initiative"], "initiative": {"type": "leftmost_set_hp", "count": 1}, "golden_description": "先手：将最左侧的2个敌方棋子变为1血", "golden_overrides": {"initiative": {"type": "leftmost_set_hp", "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 凯瑟琳 / Catherine
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Catherine','凯瑟琳','维多利亚干员','维多利亚',4,5,2,1,'#5b2c83','敌方棋子死亡后，获得一张其原始复制（每回合限定1次）','{"enemy_death_copy_limit": 1, "golden_description": "敌方棋子死亡后，获得一张其原始复制（每回合限定2次）", "golden_overrides": {"enemy_death_copy_limit": 2}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 风笛 / Bagpipe
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Bagpipe','风笛','维多利亚干员','维多利亚',4,6,4,1,'#5b2c83','血战：所有友方棋子永久获得+2/+2，维多利亚棋子额外获得+1/+1','{"mechanics": ["bloodbattle", "permanent"], "bloodbattle": {"type": "team_faction_growth", "amount": 2, "faction": "维多利亚", "extra": 1}, "golden_description": "血战：所有友方棋子永久获得+4/+4，维多利亚棋子额外获得+2/+2", "golden_overrides": {"bloodbattle": {"type": "team_faction_growth", "amount": 4, "faction": "维多利亚", "extra": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 焰影苇草 / Reed the Flame Shadow
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Reed the Flame Shadow','焰影苇草','维多利亚干员','维多利亚',4,5,3,1,'#5b2c83','先手：使相邻的棋子永久获得+2/+2，并触发血战效果','{"mechanics": ["initiative", "permanent"], "initiative": {"type": "adjacent_bloodbattle", "amount": 2, "triggers": 1}, "golden_description": "先手：使相邻的棋子永久获得+4/+4，并触发血战效果2次", "golden_overrides": {"initiative": {"type": "adjacent_bloodbattle", "amount": 4, "triggers": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 夜魔 / Nightmare
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Nightmare','夜魔','维多利亚干员','维多利亚',5,5,5,1,'#5b2c83','敌方棋子死亡时：使所有友方棋子永久获得+2/+2，并触发血战效果（每回合限定2次）','{"mechanics": ["permanent"], "enemy_death_growth": {"amount": 2, "limit": 2}, "golden_description": "敌方棋子死亡时：使所有友方棋子永久获得+4/+4，并触发血战效果（每回合限定4次）", "golden_overrides": {"enemy_death_growth": {"amount": 4, "limit": 4}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 号角 / Horn
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Horn','号角','维多利亚干员','维多利亚',5,4,6,1,'#5b2c83','血战：使所有友方棋子永久获得+1/+1，并对最左侧的敌人造成X铳弹伤害（随商店等级提升）','{"mechanics": ["bloodbattle", "permanent", "bullet_damage"], "bloodbattle": {"type": "team_growth_shop_bullet", "amount": 1, "multiplier": 1}, "golden_description": "血战：使所有友方棋子永久获得+2/+2，并对最左侧的敌人造成2X铳弹伤害（随商店等级提升）", "golden_overrides": {"bloodbattle": {"type": "team_growth_shop_bullet", "amount": 2, "multiplier": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 白铁 / Stainless
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Stainless','白铁','维多利亚干员','维多利亚',5,4,5,1,'#5b2c83','后勤&血战：获得1枚金币','{"mechanics": ["logistics", "bloodbattle"], "logistics": {"type": "gain_gold", "amount": 1}, "bloodbattle": {"type": "gain_gold", "amount": 1}, "golden_description": "后勤&血战：获得2枚金币", "golden_overrides": {"logistics": {"type": "gain_gold", "amount": 2}, "bloodbattle": {"type": "gain_gold", "amount": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 维娜·维多利亚 / Vina Victoria
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Vina Victoria','维娜·维多利亚','维多利亚干员','维多利亚',5,5,5,1,'#5b2c83','护盾；血战：获得护盾和永久获得+2/+2，若已有护盾则额外永久获得+5/+5','{"mechanics": ["shield", "bloodbattle", "permanent"], "shield": true, "bloodbattle": {"type": "shield_growth", "amount": 2, "extra": 5}, "golden_description": "护盾；血战：获得护盾和永久获得+4/+4，若已有护盾则额外永久获得+10/+10", "golden_overrides": {"bloodbattle": {"type": "shield_growth", "amount": 4, "extra": 10}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 澄闪 / Goldenglow
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Goldenglow','澄闪','维多利亚干员','维多利亚',6,7,7,1,'#5b2c83','先手：对最左侧的敌人造成等同于攻击力的铳弹伤害','{"mechanics":["initiative","bullet_damage"],"initiative":{"type":"leftmost_attack_bullet","multiplier":1},"golden_description":"先手：对最左侧的敌人造成等同于2倍攻击力的铳弹伤害","golden_overrides":{"initiative":{"type":"leftmost_attack_bullet","multiplier":2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 酒神 / Victoria_Jiushen
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Victoria_Jiushen','酒神','维多利亚干员','维多利亚',6,4,4,1,'#5b2c83','遗计：使所有友方棋子永久获得+4/+4，并触发血战效果','{"mechanics":["legacy","permanent"],"legacy":{"type":"team_permanent_bloodbattle","amount":4,"triggers":1},"golden_description":"遗计：使所有友方棋子永久获得+8/+8，并触发2次血战效果","golden_overrides":{"legacy":{"type":"team_permanent_bloodbattle","amount":8,"triggers":2}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,

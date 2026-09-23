@@ -12,6 +12,222 @@ def unit(name, **extra):
 
 
 class BulletBatchTests(unittest.TestCase):
+    def test_goldenglow_tinman_fills_shots_and_prefers_living(self):
+        for repeats in (2,3):
+            g=unit('Goldenglow',initiative={'type':'leftmost_attack_bullet','multiplier':2});g['attack']=4
+            tin=unit('Tin',initiative_multiplier=repeats);enemies=[unit('E1'),unit('E2')]
+            for u in enemies: u['current_hp']=1
+            events=[]
+            server.resolve_precombat_phase('initiative',[g,tin],enemies,'left',events)
+            shots=[e for e in events if e.get('damage_type')=='bullet']
+            self.assertEqual(len(shots),repeats)
+            self.assertEqual([e['to_slot'] for e in shots],[1,2] if repeats==2 else [1,2,1])
+            self.assertTrue(all(e['bullet_base_damage']==8 for e in shots))
+
+    def test_jiushen_logos_permanent_and_repeated_bloodbattle(self):
+        dead=unit('Jiushen',legacy={'type':'team_permanent_bloodbattle','amount':8,'triggers':2});dead['current_hp']=0
+        ally=unit('Grani',bloodbattle=1);logos=unit('Logos',legacy_multiplier=3);events=[]
+        team=[dead,ally,logos]
+        server.handle_unit_death(dead,0,'left',team,[],events)
+        self.assertEqual(ally['attack'],31)
+        self.assertEqual(logos['attack'],25)
+        self.assertIsNone(team[0])
+
+    def test_stainless_logistics_and_bloodbattle_gold(self):
+        for amount in (1,2):
+            u=unit('Stainless',logistics={'type':'gain_gold','amount':amount},bloodbattle={'type':'gain_gold','amount':amount});events=[]
+            server.apply_logistics_effects([u],'left',events)
+            server.resolve_bloodbattle(u,0,'left',[u],[],events)
+            self.assertEqual([e['amount'] for e in events if e.get('type')=='gain_gold'],[amount,amount])
+
+    def test_horn_shop_damage_and_strength(self):
+        for level in range(1,7):
+            for multiplier in (1,2):
+                u=unit('Horn',battle_shop_level=level,bullet_strength=5,bloodbattle={'type':'team_growth_shop_bullet','amount':multiplier,'multiplier':multiplier});events=[]
+                enemy=unit('Enemy');server.resolve_bloodbattle(u,0,'left',[u],[enemy],events)
+                shot=next(e for e in events if e.get('damage_type')=='bullet')
+                self.assertEqual(shot['bullet_base_damage'],level*multiplier)
+                self.assertEqual(shot['damage'],level*multiplier+5)
+                self.assertEqual(u['attack'],1+multiplier)
+
+    def test_vina_buffs_before_shield_and_existing_shield_bonus(self):
+        for shield in (False,True):
+            u=unit('Vina',shield=shield,bloodbattle={'type':'shield_growth','amount':2,'extra':5});events=[]
+            server.resolve_bloodbattle(u,0,'left',[u],[],events)
+            self.assertEqual(u['attack'],8 if shield else 3)
+            self.assertTrue(server.has_shield(u))
+            self.assertEqual(events[-2]['type'],'grant_shield')
+            self.assertEqual([e['attack_gain'] for e in events if e.get('type')=='permanent_buff'],[2,5] if shield else [2])
+
+    def test_nightmare_death_sources_and_limit(self):
+        for mode in ('counter','attack','bullet','legacy'):
+            n=unit('Nightmare',enemy_death_growth={'amount':2,'limit':2});ally=unit('Ally',bloodbattle=1)
+            team=[ally,n];events=[]
+            for _ in range(3):
+                enemy=unit('Enemy');enemy['current_hp']=1
+                if mode=='counter': server.perform_attack_action(enemy,0,'right',[enemy],team,events)
+                elif mode=='attack': server.perform_attack_action(ally,0,'left',team,[enemy],events)
+                else: server.deal_bullet_damage(ally,0,'left',team,[enemy],0,enemy,1,events,source_effect='legacy' if mode=='legacy' else None)
+            self.assertEqual(n['enemy_death_growth_count'],2,mode)
+            self.assertEqual(n['attack'],5,mode)
+            self.assertGreaterEqual(ally['attack'],7,mode)
+
+    def test_nightmare_chain_kills_capped(self):
+        n=unit('Nightmare',enemy_death_growth={'amount':4,'limit':4})
+        r=unit('Rockrock',bloodbattle={'type':'leftmost_bullet_growth','damage':3,'growth':1})
+        team=[n,r];foes=[unit('Enemy') for _ in range(7)];events=[]
+        for enemy in foes: enemy['current_hp']=1
+        server.deal_bullet_damage(n,0,'left',team,foes,0,foes[0],1,events)
+        self.assertEqual(n['enemy_death_growth_count'],4)
+        self.assertTrue(all(x is None for x in foes))
+
+    def test_nightmare_no_trigger_when_dead_or_enemy_saved(self):
+        n=unit('Nightmare',enemy_death_growth={'amount':2,'limit':2});n['current_hp']=0
+        events=[];enemy=unit('Enemy');enemy['current_hp']=0
+        server.handle_unit_death(enemy,0,'right',[enemy],[n],events)
+        self.assertNotIn('enemy_death_growth_count',n)
+        n['current_hp']=100;enemy=unit('Enemy');pending=[(enemy,0,'right',[enemy],[n])]
+        server.resolve_pending_deaths(pending,events)
+        self.assertNotIn('enemy_death_growth_count',n)
+
+    def test_catherine_limit_alive_and_base_copy(self):
+        for limit in (1,2):
+            c=unit('Catherine',enemy_death_copy_limit=limit);events=[]
+            template=unit('Enemy');template['attack']=3
+            with patch.object(server,'card_by_id',return_value=dict(template)):
+                for _ in range(3):
+                    victim=unit('Enemy');victim.update(current_hp=0,attack=999,golden=True)
+                    server.handle_unit_death(victim,0,'right',[victim],[c],events)
+            copies=[e['card'] for e in events if e.get('type')=='gain_card']
+            self.assertEqual(len(copies),limit)
+            self.assertTrue(all(x['attack']==3 and not x.get('golden') for x in copies))
+        c=unit('Catherine',enemy_death_copy_limit=2);c['current_hp']=0;events=[]
+        with patch.object(server,'card_by_id',return_value=unit('Enemy')):
+            server.trigger_enemy_death_copy(unit('Enemy'),'right',[c],events)
+        self.assertEqual(events,[])
+
+    def test_bagpipe_faction_growth_separate_permanent_gains(self):
+        a=unit('Bagpipe',faction='维多利亚',bloodbattle={'type':'team_faction_growth','amount':2,'faction':'维多利亚','extra':1})
+        b=unit('Other',faction='拉特兰');events=[]
+        server.resolve_bloodbattle(a,0,'left',[a,b],[],events)
+        self.assertEqual((a['attack'],b['attack']),(4,3))
+        self.assertEqual([e['attack_gain'] for e in events if e.get('type')=='permanent_buff'],[2,1,2])
+
+    def test_reed_neighbors_and_two_bloodbattle_triggers(self):
+        a=unit('A',bloodbattle=1);b=unit('B',bloodbattle=2);far=unit('Far',bloodbattle=9)
+        reed=unit('Reed',initiative={'type':'adjacent_bloodbattle','amount':4,'triggers':2});events=[]
+        server.resolve_one_precombat_effect('initiative',reed,1,[a,reed,b,far],[],'left',events)
+        self.assertEqual((a['attack'],b['attack'],far['attack']),(7,9,1))
+
+    def test_rockrock_chained_bullet_kills(self):
+        effect={'type':'leftmost_bullet_growth','damage':3,'growth':1}
+        a=unit('Rockrock',bloodbattle=effect,initiative=effect)
+        foes=[unit('E1'),unit('E2'),unit('E3')]
+        for b in foes: b['current_hp']=2
+        events=[]
+        server.resolve_one_precombat_effect('initiative',a,0,[a],foes,'left',events)
+        self.assertTrue(all(b is None for b in foes))
+        self.assertEqual(a['attack'],5) # initiative + 3 kills
+        shots=[e for e in events if e.get('damage_type')=='bullet']
+        self.assertEqual([e['to_slot'] for e in shots],[1,2,3])
+
+    def test_harold_aura_removed_and_not_permanent(self):
+        a=unit('Ally');h=unit('Harold',bloodbattle_aura=2);team=[a,h];events=[]
+        server.resolve_bloodbattle(a,0,'left',team,[],events)
+        self.assertEqual(a['attack'],3)
+        saved=[unit('Ally')];server.apply_persistent_battle_gains(saved,events)
+        self.assertEqual(saved[0]['attack'],1)
+        h['current_hp']=0
+        server.handle_unit_death(h,1,'left',team,[],events)
+        server.resolve_bloodbattle(a,0,'left',team,[],events)
+        self.assertEqual(a['attack'],3)
+
+    def test_mint_adjacent_bloodbattle_repetitions(self):
+        a=unit('A',bloodbattle=1);b=unit('B',bloodbattle=2);far=unit('Far',bloodbattle=9)
+        mint=unit('Mint',logistics={'type':'adjacent_buff','attack':4,'max_hp':4,'bloodbattle_triggers':2})
+        server.apply_logistics_effects([a,mint,b,far],'left',[])
+        self.assertEqual((a['attack'],b['attack'],far['attack']),(7,9,1))
+
+    def test_vendela_repeats_same_leftmost_targets(self):
+        for count in (1,2):
+            a=unit('Vendela',initiative={'type':'leftmost_set_hp','count':count});foes=[unit('E1'),unit('E2'),unit('E3')];events=[]
+            for _ in range(3):server.resolve_one_precombat_effect('initiative',a,0,[a],foes,'left',events)
+            self.assertEqual([b['current_hp'] for b in foes],[1]*count+[100]*(3-count))
+            self.assertEqual(sum(e.get('type')=='set_hp' for e in events),count*3)
+
+    def test_temporary_bloodbattle_stacks_and_persists_stats(self):
+        a=unit('Grani',bloodbattle=1,temporary_bloodbattle=[2,3]);b=unit('Enemy');b['current_hp']=1
+        events=[];saved=[dict(a)]
+        server.perform_attack_action(a,0,'left',[a],[b],events)
+        self.assertEqual(a['attack'],7)
+        self.assertEqual([e['attack_gain'] for e in events if e.get('mechanic')=='bloodbattle'],[1,2,3])
+        server.apply_persistent_battle_gains(saved,events)
+        self.assertEqual(saved[0]['attack'],7)
+
+
+    def test_bloodbattle_attack_and_persistence(self):
+        for amount in (1,2):
+            a=unit('Grani',bloodbattle=amount);b=unit('Enemy');b['current_hp']=1
+            events=[];saved=[dict(a)]
+            server.perform_attack_action(a,0,'left',[a],[b],events)
+            self.assertEqual(a['attack'],1+amount)
+            server.apply_persistent_battle_gains(saved,events)
+            self.assertEqual(saved[0]['attack'],1+amount)
+            self.assertEqual(saved[0]['max_hp'],100+amount)
+
+    def test_bloodbattle_saves_nonpositive_attacker(self):
+        for hp,amount,expected in ((1,1,1),(1,2,2),(1,1,0),(1,1,-2)):
+            a=unit('Grani',bloodbattle=amount);a['current_hp']=hp
+            b=unit('Enemy');b['current_hp']=1;b['attack']=hp+amount-expected
+            allies=[a];events=[]
+            server.perform_attack_action(a,0,'left',allies,[b],events)
+            self.assertEqual(a['current_hp'],expected)
+            self.assertEqual(a['attack'],1+amount)
+            self.assertEqual(allies[0] is a,expected>0)
+            self.assertEqual(sum(e.get('mechanic')=='bloodbattle' for e in events),1)
+
+    def test_negative_health_preserved_and_saved_during_effect(self):
+        for hp_gain in (3,4,5):
+            a=unit('Shooter');b=unit('Target');b['current_hp']=1
+            allies=[a];foes=[b];events=[]
+            @server.atomic_effect
+            def action(source,idx,side,mine,enemies,events):
+                server.deal_spell_damage(source,idx,side,mine,enemies,0,b,5,events)
+                self.assertEqual(b['current_hp'],-4)
+                self.assertEqual(next(e for e in events if e.get('damage_type')=='spell')['target_hp'],-4)
+                server.apply_team_buff(b,0,'right',enemies,{'max_hp':hp_gain},events)
+            action(a,0,'left',allies,foes,events)
+            self.assertEqual(foes[0] is b,hp_gain>4)
+
+    def test_bloodbattle_exclusions(self):
+        for mode in ('counter','legacy','rescued'):
+            a=unit('Grani',bloodbattle=1);b=unit('Enemy');events=[]
+            if mode=='counter':
+                b['current_hp']=1
+                server.perform_attack_action(b,0,'right',[b],[a],events)
+            elif mode=='mutual':
+                a['current_hp']=b['current_hp']=1
+                server.perform_attack_action(a,0,'left',[a],[b],events)
+            elif mode=='legacy':
+                b['current_hp']=1
+                server.deal_bullet_damage(a,0,'left',[a],[b],0,b,2,events,source_effect='legacy')
+            else:
+                b['current_hp']=1;pending=[];foes=[b]
+                server.deal_spell_damage(a,0,'left',[a],foes,0,b,2,events,pending_deaths=pending)
+                b['current_hp']=2
+                server.resolve_pending_deaths(pending,events)
+            self.assertFalse(any(e.get('mechanic')=='bloodbattle' for e in events),mode)
+
+    def test_bloodbattle_skill_kills_count_separately(self):
+        for damage in (server.deal_bullet_damage,server.deal_spell_damage):
+            a=unit('Grani',bloodbattle=1);foes=[unit('E1'),unit('E2')];events=[];pending=[]
+            for i,b in enumerate(foes):
+                b['current_hp']=1
+                damage(a,0,'left',[a],foes,i,b,2,events,pending_deaths=pending)
+            server.resolve_pending_deaths(pending,events)
+            self.assertEqual(a['attack'],3)
+            self.assertEqual(sum(e.get('mechanic')=='bloodbattle' for e in events),2)
+
     def test_collision_can_save_legacy_unit_before_death(self):
         for venom in (False,True):
             attacker=unit('Enemy',venom=venom);attacker['attack']=2
