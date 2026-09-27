@@ -12,6 +12,65 @@ def unit(name, **extra):
 
 
 class BulletBatchTests(unittest.TestCase):
+    def test_crownslayer_legacy_venom_after_bullet_kill(self):
+        attacker=unit('Attacker');crown=unit('Crownslayer',venom=True,legacy={'type':'bullet_damage','damage':1,'hits':1,'target':'killer'})
+        crown['current_hp']=1;left=[attacker];right=[crown];events=[]
+        server.deal_bullet_damage(attacker,0,'left',left,right,0,crown,1,events)
+        self.assertIsNone(left[0]);self.assertIsNone(right[0])
+        self.assertTrue(crown['venom_consumed'])
+        self.assertTrue(any(e.get('source_effect')=='legacy' and e.get('damage_type')=='bullet' for e in events))
+
+    def test_venom_requires_actual_outgoing_damage(self):
+        for kind in ['bullet','cleave']:
+            attacker=unit('Attacker');poison=unit('Poison',venom=True)
+            if kind=='bullet':server.deal_bullet_damage(attacker,0,'left',[attacker],[poison],0,poison,1,[])
+            else:server.deal_cleave_damage(attacker,0,'left',[attacker],[poison],0,poison,1,[],[])
+            self.assertFalse(poison.get('venom_consumed'));self.assertFalse(attacker.get('_venom_destroyed'))
+        poison=unit('Poison',venom=True);target=unit('Shield',shield=True)
+        server.deal_bullet_damage(poison,0,'left',[poison],[target],0,target,3,[])
+        self.assertFalse(poison.get('venom_consumed'))
+        server.deal_bullet_damage(poison,0,'left',[poison],[target],0,target,3,[])
+        self.assertTrue(poison['venom_consumed']);self.assertTrue(target['_venom_destroyed'])
+
+    def test_health_lock_once_and_counterattack(self):
+        for kind in ('bullet','spell','friendly','cleave','collision'):
+            attacker=unit('Attacker');attacker['attack']=10
+            target=unit('Specter',lock_hp=True,mechanics=['lock_hp']);target['current_hp']=2
+            allies=[attacker];foes=[target];events=[]
+            if kind=='bullet':server.deal_bullet_damage(attacker,0,'left',allies,foes,0,target,10,events)
+            elif kind=='spell':server.deal_spell_damage(attacker,0,'left',allies,foes,0,target,10,events)
+            elif kind=='friendly':server.deal_friendly_bullet_damage(attacker,0,'left',foes,allies,0,target,10,events,[])
+            elif kind=='cleave':server.deal_cleave_damage(attacker,0,'left',allies,foes,0,target,10,events,[])
+            else:server.perform_attack_action(attacker,0,'left',allies,foes,events)
+            self.assertEqual(target['current_hp'],1,kind)
+            self.assertFalse(target['lock_hp']);self.assertNotIn('lock_hp',target['mechanics'])
+            self.assertEqual(len([e for e in events if e.get('type')=='health_lock']),1)
+            server.deal_bullet_damage(attacker,0,'left',allies,foes,0,target,10,events)
+            self.assertIsNone(foes[0],kind)
+        attacker=unit('Specter',lock_hp=True);attacker['current_hp']=1
+        server.perform_attack_action(attacker,0,'left',[attacker],[unit('Enemy')],[])
+        self.assertEqual(attacker['current_hp'],1)
+        self.assertFalse(attacker['lock_hp'])
+
+    def test_combo_two_strikes_unique_and_raid_excluded(self):
+        for effect, expected in [(None,2),('raid',1)]:
+            attacker=unit('Reaper',combo=True,mechanics=['combo','combo'])
+            enemy=unit('Enemy');events=[]
+            server.perform_attack_action(attacker,0,'left',[attacker],[enemy],events,source_effect=effect)
+            self.assertEqual(len([e for e in events if e.get('damage_type')=='collision']),expected)
+            self.assertEqual([e['strike'] for e in events if e.get('type')=='combo_strike'],[1,2] if effect is None else [])
+
+    def test_combo_stops_on_death_and_retargets_after_kill(self):
+        attacker=unit('Reaper',combo=True);attacker['current_hp']=1
+        events=[];team=[attacker]
+        server.perform_attack_action(attacker,0,'left',team,[unit('Enemy')],events)
+        self.assertIsNone(team[0])
+        self.assertEqual(len([e for e in events if e.get('damage_type')=='collision']),1)
+        attacker=unit('Reaper',combo=True);first=unit('First',guard=True);first['current_hp']=1
+        foes=[first,unit('Second')];events=[]
+        server.perform_attack_action(attacker,0,'left',[attacker],foes,events)
+        self.assertEqual([e['to'] for e in events if e.get('damage_type')=='collision'],['First','Second'])
+
     def test_goldenglow_tinman_fills_shots_and_prefers_living(self):
         for repeats in (2,3):
             g=unit('Goldenglow',initiative={'type':'leftmost_attack_bullet','multiplier':2});g['attack']=4

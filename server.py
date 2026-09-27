@@ -151,6 +151,10 @@ def cards():
             description=f'选择1个友方棋子获得+{lv}/+{lv}，并获得1回合【血战：自身永久获得+{amount}/+{amount}】',
             color='#ff526e',bullet_strength=0,target_scope='single_unit',effect='enemy_sorrow',bloodbattle_amount=amount,
             mechanics=['permanent'],unit_id=None,stars=0))
+    for lv in range(1,7):
+        skills.append(dict(id=f'life_tower_{lv}',name=f'生命塔台.{lv}',card_type='skill',faction='技能',cost=lv,effect_value=lv,
+            description=f'直到下1回合，使所有友方棋子获得+{lv}/+{lv}',color='#ef82ac',bullet_strength=0,
+            target_scope='board',effect='life_tower',unit_id=None,stars=0))
     return sorted(units+skills,key=lambda c:(card_tier(c),c["id"]))
 
 def card_tier(card): return card["tier"] if card.get("card_type")=="unit" else card["cost"]
@@ -165,7 +169,7 @@ def player(player_id="local"):
 
 def shop(count=None, player_id="local"):
     level=player(player_id)["shop_level"]; count=shop_slot_count(level) if count is None else count
-    pool=[c for c in cards() if c["card_type"]=="unit" and card_tier(c)<=level]
+    pool=[c for c in cards() if c["card_type"]=="unit" and not c.get("summon_only") and card_tier(c)<=level]
     return [dict(random.choice(pool)) for _ in range(count)] if pool else [None]*count
 
 def buy_card(card_id, player_id="local", bypass_shop_level=False):
@@ -173,6 +177,7 @@ def buy_card(card_id, player_id="local", bypass_shop_level=False):
         card=next((c for c in cards() if c["id"]==card_id),None); row=con.execute("SELECT gold,shop_level FROM players WHERE id=?",(player_id,)).fetchone()
         if not card: raise ValueError("\u5361\u724c\u4e0d\u5b58\u5728")
         if card["card_type"]!="unit": raise ValueError("\u6280\u80fd\u5361\u4e0d\u80fd\u4ece\u5546\u5e97\u8d2d\u4e70")
+        if card.get("summon_only"): raise ValueError("海怪只能通过召唤出现")
         if not row: raise ValueError("\u73a9\u5bb6\u4e0d\u5b58\u5728")
         if card_tier(card)>row["shop_level"] and not bypass_shop_level: raise ValueError("\u5546\u5e97\u7b49\u7ea7\u4e0d\u8db3\uff0c\u4e0d\u80fd\u8d2d\u4e70\u8be5\u68cb\u5b50")
         cost=card_purchase_cost(card)
@@ -252,6 +257,16 @@ def bullet_condition_met(unit,mine,foes,round_number):
     return any(bool(unit.get(k)) for k in ("bullet_ready","bullet_triggered","bullet_condition_met"))
 
 def is_guard(unit): return bool(unit and (unit.get("guard") or "guard" in unit.get("mechanics",[])))
+def apply_health_lock(unit, index, side, events):
+    # Consume on the first lethal damage, before any subsequent stat gains.
+    if unit.get("current_hp",1)>0 or unit.get("_death_confirmed") or unit.get("_venom_destroyed"): return False
+    if not (unit.get("lock_hp") or "lock_hp" in unit.get("mechanics",[])): return False
+    unit["lock_hp"]=False
+    unit["mechanics"]=[m for m in unit.get("mechanics",[]) if m!="lock_hp"]
+    unit["current_hp"]=1
+    events.append({"type":"health_lock","side":side,"slot":index+1,"from":unit["name"],"current_hp":1})
+    return True
+
 def has_shield(unit): return bool(unit and (unit.get("shield") or "shield" in unit.get("mechanics",[])))
 def has_guardian(unit): return bool(unit and (unit.get("guardian") or "guardian" in unit.get("mechanics",[])))
 def consume_shield(unit):
@@ -285,20 +300,20 @@ def trigger_bloodbattle(victim, side, foes, events, opponents=None):
 
 
 def choose_target(foes):
-    living=[(i,u) for i,u in enumerate(foes) if u and u.get("current_hp",0)>0]; guards=[(i,u) for i,u in living if is_guard(u)]; return random.choice(guards or living)
+    living=[(i,u) for i,u in battle_entries(foes) if u and u.get("current_hp",0)>0]; guards=[(i,u) for i,u in living if is_guard(u)]; return random.choice(guards or living)
 def nearest_target(foes, origin_index, include_dead=False):
-    living=[(i,u) for i,u in enumerate(foes) if u and u.get("current_hp",0)>0]
+    living=[(i,u) for i,u in battle_entries(foes) if u and u.get("current_hp",0)>0]
     candidates=[(i,u) for i,u in living if is_guard(u)] or living
     if not candidates and include_dead:
-        candidates=[(i,u) for i,u in enumerate(foes) if u and u.get("current_hp",0)<=0]
+        candidates=[(i,u) for i,u in battle_entries(foes) if u and u.get("current_hp",0)<=0]
     if not candidates: return None
     dist=min(abs(i-origin_index) for i,_ in candidates); return random.choice([(i,u) for i,u in candidates if abs(i-origin_index)==dist])
 
 def random_target(foes, include_dead=False):
-    living=[(i,u) for i,u in enumerate(foes) if u and u.get("current_hp",0)>0]
+    living=[(i,u) for i,u in battle_entries(foes) if u and u.get("current_hp",0)>0]
     if living: return random.choice(living)
     if include_dead:
-        dead=[(i,u) for i,u in enumerate(foes) if u and u.get("current_hp",0)<=0]
+        dead=[(i,u) for i,u in battle_entries(foes) if u and u.get("current_hp",0)<=0]
         return random.choice(dead) if dead else None
     return None
 
@@ -366,9 +381,14 @@ def trigger_death_feud(dead_unit, dead_index, side, allies, foes, events):
         events.append({"type":"death_feud_counter","side":side,"slot":idx+1,"from":u["name"],"count":u["death_feud_count"],"threshold":threshold,"dead":dead_unit.get("name","")})
         for _ in range(triggers):
             if u.get("current_hp",0)<=0: break
-            if eff.get("type")=="random_bullet_damage":
+            if eff.get("type")=="adjacent_permanent_buff":
+                left_neighbor,right_neighbor=spatial_neighbors(allies,idx)
+                neighbors=[left_neighbor,idx,right_neighbor]
+                for ti in neighbors:
+                    if ti is not None: bloodbattle_gain(allies[ti],ti,side,allies,events,int(eff.get("amount",2)))
+            elif eff.get("type")=="random_bullet_damage":
                 target_count=max(1,int(eff.get("target_count",1) or 1))
-                living=[(i,t) for i,t in enumerate(foes) if t and t.get("current_hp",0)>0]
+                living=[(i,t) for i,t in battle_entries(foes) if t and t.get("current_hp",0)>0]
                 batch_start=len(events)
                 events.append({"type":"bullet_batch_start"})
                 pending=[]
@@ -426,7 +446,7 @@ def bloodbattle_gain(source, idx, side, team, events, amount, permanent=True):
 
 
 def leftmost_bullet_growth(source, idx, side, team, foes, events, effect):
-    target=next(((i,u) for i,u in enumerate(foes) if u and u.get('current_hp',0)>0),None)
+    target=next(((i,u) for i,u in battle_entries(foes) if u and u.get('current_hp',0)>0),None)
     if target:
         deal_bullet_damage(source,idx,side,team,foes,*target,effect.get('damage',0),events,source_effect='bloodbattle')
     bloodbattle_gain(source,idx,side,team,events,int(effect.get('growth',0)))
@@ -442,7 +462,7 @@ def resolve_bloodbattle(source, idx, side, team, foes, events):
         elif intrinsic.get('type')=='team_growth_shop_bullet':
             for ti,target in enumerate(team):
                 if can_receive_buff(target): bloodbattle_gain(target,ti,side,team,events,int(intrinsic.get('amount',1)))
-            target=next(((i,u) for i,u in enumerate(foes) if u and u.get('current_hp',0)>0),None)
+            target=next(((i,u) for i,u in battle_entries(foes) if u and u.get('current_hp',0)>0),None)
             if target:
                 damage=max(1,min(6,int(source.get('battle_shop_level',1))))*int(intrinsic.get('multiplier',1))
                 deal_bullet_damage(source,idx,side,team,foes,*target,damage,events,source_effect='bloodbattle')
@@ -527,9 +547,12 @@ def handle_unit_death(unit, unit_index, side, team, foes, events):
         legacy_trigger_index += 1
     trigger_death_feud(unit,unit_index,side,team,foes,events)
     revived=make_revived_unit(unit,team)
-    if revived and team[unit_index] is None:
-        team[unit_index]=revived
-        events.append({"type":"revive","side":side,"slot":unit_index+1,"from":unit["name"],"unit":copy.deepcopy(revived)})
+    revive_slot=summon_slot_for(team,unit_index) if revived else None
+    if revived and revive_slot is not None:
+        place_summon(revived,unit,unit_index,team)
+        team[revive_slot]=revived
+        events.append({"type":"revive","side":side,"slot":revive_slot+1,"from":unit["name"],"unit":copy.deepcopy(revived)})
+        trigger_sea_summon_buff(revived,revive_slot,side,team,events)
 
 
 def resolve_pending_deaths(pending_deaths, events):
@@ -591,6 +614,7 @@ def deal_bullet_damage(source, source_index, side, allies, foes, target_index, t
         return False
     if target.get("current_hp",0)>0: target.pop("_blood_killer",None)
     target["current_hp"]-=dmg
+    apply_health_lock(target,target_index,target_side,events)
     trigger_injury_growth(target,target_index,target_side,foes,events,dmg)
     venom_triggered=apply_venom_after_damage(source,target,dmg)
     dead=target["current_hp"]<=0
@@ -616,6 +640,7 @@ def deal_spell_damage(source, source_index, side, allies, foes, target_index, ta
         return False
     if target.get("current_hp",0)>0: target.pop("_blood_killer",None)
     target["current_hp"]-=dmg
+    apply_health_lock(target,target_index,target_side,events)
     trigger_injury_growth(target,target_index,target_side,foes,events,dmg)
     venom_triggered=apply_venom_after_damage(source,target,dmg)
     dead=target["current_hp"]<=0
@@ -706,17 +731,20 @@ def friendly_initiative_trigger_count(team):
 def resolve_one_precombat_effect(phase, unit, idx, team, foes, side, events):
     effect=unit.get(phase) or {}
     pending_deaths=[]
-    if effect.get("type")=="leftmost_attack_bullet":
+    if effect.get("type")=="summon":
+        for _ in range(max(0,int(effect.get("count",1)))):
+            if not summon_unit_from_legacy(unit,idx,side,team,effect.get("summon_id"),events=events): break
+    elif effect.get("type")=="leftmost_attack_bullet":
         # Keep zero/negative-HP targets until all Tin Man shots have finished.
         # Each shot prefers living enemies; only an empty living pool uses corpses.
         for _ in range(friendly_initiative_trigger_count(team)):
-            candidates=[(i,u) for i,u in enumerate(foes) if u and u.get('current_hp',0)>0]
-            if not candidates: candidates=[(i,u) for i,u in enumerate(foes) if u and not u.get('_death_confirmed')]
+            candidates=[(i,u) for i,u in battle_entries(foes) if u and u.get('current_hp',0)>0]
+            if not candidates: candidates=[(i,u) for i,u in battle_entries(foes) if u and not u.get('_death_confirmed')]
             if not candidates: break
             ti,target=candidates[0]
             deal_bullet_damage(unit,idx,side,team,foes,ti,target,int(unit.get('attack',0))*int(effect.get('multiplier',1)),events,source_effect=phase,pending_deaths=pending_deaths)
     elif effect.get("type")=="adjacent_bloodbattle":
-        indices=[next((i for i in range(idx-1,-1,-1) if can_receive_buff(team[i])),None),next((i for i in range(idx+1,len(team)) if can_receive_buff(team[i])),None)]
+        indices=spatial_neighbors(team,idx)
         targets=[(i,team[i]) for i in indices if i is not None]
         for ti,target in targets:
             bloodbattle_gain(target,ti,side,team,events,int(effect.get('amount',0)))
@@ -726,7 +754,7 @@ def resolve_one_precombat_effect(phase, unit, idx, team, foes, side, events):
     elif effect.get("type")=="leftmost_bullet_growth":
         leftmost_bullet_growth(unit,idx,side,team,foes,events,effect)
     elif effect.get("type")=="leftmost_set_hp":
-        targets=[(i,u) for i,u in enumerate(foes) if u and u.get('current_hp',0)>0][:int(effect.get('count',1))]
+        targets=[(i,u) for i,u in battle_entries(foes) if u and u.get('current_hp',0)>0][:int(effect.get('count',1))]
         for ti,target in targets:
             target['current_hp']=1
             events.append(dict(type='set_hp',side='right' if side=='left' else 'left',slot=ti+1,current_hp=1,source_effect=phase))
@@ -764,7 +792,7 @@ def resolve_assimilation_initiative(unit, idx, team, foes, side, events):
     # immediately stops granting further initiative repetitions.
     while team[idx] is unit and unit.get("current_hp",0)>0:
         if repetition>=friendly_initiative_trigger_count(team): break
-        targets=[(i,team[i]) for i in range(idx-1,-1,-1) if team[i] and team[i].get("current_hp",0)>0]
+        targets=[(i,u) for i,u in reversed(battle_entries(team)) if u and u.get("battle_position",i)<unit.get("battle_position",idx) and u.get("current_hp",0)>0]
         if not targets: break
         for victim_index,victim in targets[:per_trigger]:
             team[victim_index]=None
@@ -798,8 +826,10 @@ def resolve_assimilation_initiative(unit, idx, team, foes, side, events):
         if revive_slot is None:
             events.append({"type":"revive_failed","side":side,"slot":victim_index+1,"from":victim["name"],"reason":"board_full_after_assimilation"})
             continue
+        place_summon(revived,victim,victim_index,team)
         team[revive_slot]=revived
         events.append({"type":"revive","side":side,"slot":revive_slot+1,"from":victim["name"],"unit":copy.deepcopy(revived),"source_effect":"assimilate"})
+        trigger_sea_summon_buff(revived,revive_slot,side,team,events)
 
 def resolve_temporary_initiative_buffs(unit, idx, team, side, events):
     effect_count=max(0,int(unit.get("temporary_initiative_effects",0) or 0))
@@ -862,11 +892,75 @@ def apply_battle_start_effects(team, side, events):
 def has_revive(unit):
     return bool(unit and (unit.get("revive") or "revive" in unit.get("mechanics",[])))
 
+def battle_entries(team):
+    return sorted(enumerate(team),key=lambda pair: (pair[1] or {}).get("battle_position",pair[0]))
+
+def spatial_neighbors(team,index,predicate=can_receive_buff):
+    order=[i for i,u in battle_entries(team) if i==index or (u and predicate(u))]
+    if index not in order: return None,None
+    at=order.index(index)
+    return (order[at-1] if at else None,order[at+1] if at+1<len(order) else None)
+
+def place_summon(unit,source,source_index,team):
+    # Stable event slots are separate from spatial order, so pending deaths and
+    # attack references remain valid when a summon occupies an unrelated hole.
+    anchor=float(source.get("battle_position",source_index))
+    tail=max(anchor,float(source.get("_summon_tail",anchor)))
+    right=min((float(u.get("battle_position",i)) for i,u in enumerate(team) if u and u is not unit and float(u.get("battle_position",i))>tail),default=tail+1)
+    unit["battle_position"]=(tail+right)/2
+    source["_summon_tail"]=unit["battle_position"]
+
 def summon_slot_for(team, origin_index):
-    order=list(range(origin_index-1,-1,-1))+[origin_index]+list(range(origin_index+1,len(team)))
+    order=[origin_index]+[i for i in range(len(team)) if i!=origin_index]
     for i in order:
         if 0<=i<len(team) and team[i] is None: return i
     return None
+
+_life_tower_effects = ContextVar("life_tower_effects",default=None)
+
+_aegir_game_attack = ContextVar("aegir_game_attack",default=None)
+
+def grant_aegir_game_attack(unit,side,allies,events,amount):
+    totals=_aegir_game_attack.get()
+    if totals is None: totals={"left":0,"right":0};_aegir_game_attack.set(totals)
+    totals[side]=totals.get(side,0)+amount
+    events.append({"type":"aegir_game_attack","side":side,"amount":amount,"total":totals[side],"from":unit["name"]})
+    for ti,target in enumerate(allies):
+        if not can_receive_buff(target) or not belongs_to_faction(target,"阿戈尔"): continue
+        apply_unit_buff(target,amount,unit_index=ti,side=side,events=events,source_effect="aegir_game",team=allies)
+        target["aegir_attack_applied"]=totals[side]
+        events.append({"type":"team_buff","side":side,"slot":ti+1,"from":unit["name"],"to":target["name"],"attack":target["attack"],"max_hp":target["max_hp"],"current_hp":target["current_hp"],"source_effect":"aegir_game"})
+
+def apply_aegir_game_attack(unit, side):
+    if not belongs_to_faction(unit,"阿戈尔"): return
+    total=(_aegir_game_attack.get() or {}).get(side,0)
+    unit["attack"]+=total-int(unit.get("aegir_attack_applied",0))
+    unit["aegir_attack_applied"]=total
+
+def trigger_sea_summon_buff(unit, slot, side, team, events):
+    for effect in (_life_tower_effects.get() or {}).get(side,[]):
+        amount=int(effect.get("amount",0))
+        apply_unit_buff(unit,amount,amount,unit_index=slot,side=side,events=events,source_effect="life_tower",team=team)
+        events.append({"type":"team_buff","side":side,"slot":slot+1,"from":"生命塔台","to":unit["name"],"attack":unit["attack"],"max_hp":unit["max_hp"],"current_hp":unit["current_hp"],"source_effect":"life_tower"})
+    apply_aegir_game_attack(unit,side)
+    # Snapshot each watcher contribution before buffs can trigger other mechanics.
+    watchers=[(i,u) for i,u in enumerate(team) if u and u.get("current_hp",0)>0 and not u.get("_death_confirmed") and not u.get("_venom_destroyed")]
+    for source_index, source in watchers:
+        aegir=belongs_to_faction(unit,"阿戈尔")
+        if aegir and source.get("aegir_summon_game_attack"):
+            grant_aegir_game_attack(source,side,team,events,int(source["aegir_summon_game_attack"]))
+        lock_buff=int(source.get("aegir_summon_lock_buff",0)) if aegir else 0
+        if lock_buff:
+            unit["lock_hp"]=True;unit["mechanics"]=list(dict.fromkeys(unit.get("mechanics",[])+["lock_hp"]))
+            events.append({"type":"grant_lock_hp","side":side,"slot":slot+1})
+        sea=int(source.get("sea_summon_buff",0)) if unit.get("sea_monster") else 0
+        attack=math.ceil(source.get("attack",0)*source.get("aegir_summon_attack_ratio",0)) if belongs_to_faction(unit,"阿戈尔") else 0
+        sea+=lock_buff
+        if not sea and not attack: continue
+        apply_unit_buff(unit,sea+attack,sea,unit_index=slot,side=side,events=events,source_effect="summon_buff",team=team)
+        events.append({"type":"team_buff","side":side,"slot":slot+1,"from":source["name"],"from_slot":source_index+1,"to":unit["name"],"attack":unit["attack"],"max_hp":unit["max_hp"],"current_hp":unit["current_hp"],"source_effect":"summon_buff"})
+    # Also synchronize a global bonus when there were no living summon watchers.
+    events.append({"type":"team_buff","side":side,"slot":slot+1,"from":unit["name"],"to":unit["name"],"attack":unit["attack"],"max_hp":unit["max_hp"],"current_hp":unit["current_hp"],"source_effect":"summon_sync"})
 
 def summon_unit_from_legacy(source, source_index, side, team, summon_id, grant_revive=False, events=None, summon_golden=False):
     slot=summon_slot_for(team,source_index)
@@ -885,9 +979,11 @@ def summon_unit_from_legacy(source, source_index, side, team, summon_id, grant_r
         mechs=list(unit.get("mechanics",[]))
         if "revive" not in mechs: mechs.append("revive")
         unit["mechanics"]=mechs
+    place_summon(unit,source,source_index,team)
     team[slot]=unit
     if events is not None:
         events.append({"type":"summon","side":side,"slot":slot+1,"from":source["name"],"from_slot":source_index+1,"unit":copy.deepcopy(unit),"consume_revive_slot":source_index+1})
+    if events is not None: trigger_sea_summon_buff(unit,slot,side,team,events)
     return slot,unit
 
 def deal_friendly_bullet_damage(source, source_index, side, allies, foes, target_index, target, base, events, pending_deaths, record_cumulative=True):
@@ -899,7 +995,7 @@ def deal_friendly_bullet_damage(source, source_index, side, allies, foes, target
         if record_cumulative: record_damage_instance(side,allies,events)
         return
     if target.get("current_hp",0)>0: target.pop("_blood_killer",None)
-    target["current_hp"]-=dmg; trigger_injury_growth(target,target_index,side,allies,events,dmg); dead=target["current_hp"]<=0
+    target["current_hp"]-=dmg; apply_health_lock(target,target_index,side,events); trigger_injury_growth(target,target_index,side,allies,events,dmg); dead=target["current_hp"]<=0
     event={"side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":side,"damage_type":"bullet","damage":dmg,"bullet_base_damage":int(base),"bullet_strength":0,"counter_damage":0,"target_hp":target["current_hp"],"attacker_hp":source.get("current_hp",0),"target_dead":dead,"attacker_dead":True,"source_effect":"legacy","friendly_fire":True}
     events.append(event)
     if dmg>0 and record_cumulative:
@@ -912,8 +1008,8 @@ def dominant_faction_pool(allies):
     concrete=[u.get("faction") for u in living if u.get("faction") and u.get("faction")!="任意"]
     if concrete:
         counts={f:concrete.count(f) for f in set(concrete)};best=max(counts.values());dominant=random.choice([f for f,n in counts.items() if n==best])
-        return [c for c in cards() if c.get("card_type")=="unit" and c.get("faction") in (dominant,"任意")]
-    return [c for c in cards() if c.get("card_type")=="unit"]
+        return [c for c in cards() if c.get("card_type")=="unit" and not c.get("summon_only") and c.get("faction") in (dominant,"任意")]
+    return [c for c in cards() if c.get("card_type")=="unit" and not c.get("summon_only")]
 
 def summon_and_gain_dominant(source, source_index, side, allies, events, count):
     for _ in range(max(1,int(count or 1))):
@@ -922,8 +1018,9 @@ def summon_and_gain_dominant(source, source_index, side, allies, events, count):
         gained=copy.deepcopy(random.choice(pool));gained["current_hp"]=gained.get("max_hp",1)
         slot=source_index if allies[source_index] is None else summon_slot_for(allies,source_index)
         if slot is not None:
-            summoned=copy.deepcopy(gained);summoned["summoned_by_phase"]=True;summoned["summoned_by_legacy"]=True;allies[slot]=summoned
+            summoned=copy.deepcopy(gained);summoned["summoned_by_phase"]=True;summoned["summoned_by_legacy"]=True;place_summon(summoned,source,source_index,allies);allies[slot]=summoned
             events.append({"type":"summon","side":side,"slot":slot+1,"from":source["name"],"from_slot":source_index+1,"unit":copy.deepcopy(summoned)})
+            trigger_sea_summon_buff(summoned,slot,side,allies,events)
         events.append({"type":"gain_card","side":side,"from":source["name"],"from_slot":source_index+1,"card":copy.deepcopy(gained),"card_id":gained["id"],"card_name":gained["name"],"source_effect":"legacy"})
 
 def finish_bullet_batch(side, team, events, start):
@@ -938,7 +1035,27 @@ def finish_bullet_batch(side, team, events, start):
 def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
     legacy=legacy or {}
     pending_deaths=[]
-    if legacy.get("type")=="team_permanent_bloodbattle":
+    if legacy.get("type")=="aegir_game_attack":
+        grant_aegir_game_attack(unit,side,allies,events,int(legacy.get("amount",1)))
+    elif legacy.get("type") in ("summon_random_sea_monsters","summon_distinct_sea_monsters"):
+        pool=[c for c in cards() if c.get("sea_monster")]
+        for _ in range(max(0,int(legacy.get("count",2)))):
+            if not pool: break
+            card=random.choice(pool)
+            if not summon_unit_from_legacy(unit,unit_index,side,allies,card["id"],events=events): break
+    elif legacy.get("type")=="summon_random_aegir":
+        pool=[c for c in cards() if c.get("card_type")=="unit" and c.get("faction")=="阿戈尔" and c.get("id")!="Ulpianus"]
+        for _ in range(max(0,int(legacy.get("count",2)))):
+            if not pool: break
+            summoned=summon_unit_from_legacy(unit,unit_index,side,allies,random.choice(pool)["id"],events=events)
+            if not summoned: break
+            ti,target=summoned;amount=int(legacy.get("amount",3))
+            apply_unit_buff(target,amount,amount,unit_index=ti,side=side,events=events,source_effect="summon_buff",team=allies)
+            events.append({"type":"team_buff","side":side,"slot":ti+1,"from":unit["name"],"to":target["name"],"attack":target["attack"],"max_hp":target["max_hp"],"current_hp":target["current_hp"],"source_effect":"summon_buff"})
+    elif legacy.get("type")=="summon":
+        for _ in range(max(0,int(legacy.get("count",1)))):
+            if not summon_unit_from_legacy(unit,unit_index,side,allies,legacy.get("summon_id"),events=events): break
+    elif legacy.get("type")=="team_permanent_bloodbattle":
         targets=[(i,u) for i,u in enumerate(allies) if can_receive_buff(u)]
         for ti,target in targets:
             bloodbattle_gain(target,ti,side,allies,events,int(legacy.get('amount',0)))
@@ -960,7 +1077,7 @@ def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
                 base_damage=int(legacy.get("damage",0) or 0)
                 deal_friendly_bullet_damage(unit,unit_index,side,allies,foes,ti,target,base_damage,events,pending_deaths,record_cumulative=False)
                 if base_damage>0: cumulative_hits+=1
-            foe_targets=[(ti,target) for ti,target in enumerate(foes) if target and target.get("current_hp",0)>0]
+            foe_targets=[(ti,target) for ti,target in battle_entries(foes) if target and target.get("current_hp",0)>0]
             if not foe_targets:
                 corpse=random_target(foes,include_dead=True)
                 foe_targets=[corpse] if corpse else []
@@ -1147,7 +1264,7 @@ def apply_before_attack(attacker, attacker_index, side, team, events):
 
 def trigger_opponent_attack_reactions(attacker, attacker_index, side, mine, foes, events):
     target_side="right" if side=="left" else "left"; pending=[]
-    for ri,reactor in enumerate(foes):
+    for ri,reactor in battle_entries(foes):
         if mine[attacker_index] is not attacker or attacker.get("current_hp",0)<=0: break
         if not reactor or reactor.get("current_hp",0)<=0: continue
         effect=reactor.get("opponent_attack") or {}
@@ -1167,6 +1284,7 @@ def deal_cleave_damage(source, source_index, side, allies, foes, target_index, t
         dealt=0
     else:
         dealt=dmg;target["current_hp"]-=dealt
+        apply_health_lock(target,target_index,target_side,events)
         trigger_injury_growth(target,target_index,target_side,foes,events,dealt)
     dead=target.get("current_hp",0)<=0
     if dead: mark_killer(target,source_index,source)
@@ -1176,6 +1294,19 @@ def deal_cleave_damage(source, source_index, side, allies, foes, target_index, t
 
 @atomic_effect
 def perform_attack_action(attacker, idx, side, mine, foes, events, round_number=1, source_effect=None):
+    # Each strike settles fully before retargeting. A revived copy cannot inherit the second strike.
+    combo = source_effect != "raid" and bool(attacker.get("combo") or "combo" in attacker.get("mechanics", []))
+    performed = False
+    for strike in range(2 if combo else 1):
+        if idx >= len(mine) or mine[idx] is not attacker or attacker.get("current_hp", 0) <= 0: break
+        if not any(u and u.get("current_hp", 0) > 0 for u in foes): break
+        if combo: events.append({"type":"combo_strike", "side":side, "from_slot":idx+1, "from":attacker["name"], "strike":strike+1})
+        if not perform_single_attack(attacker, idx, side, mine, foes, events, round_number, source_effect): break
+        performed = True
+    return performed
+
+
+def perform_single_attack(attacker, idx, side, mine, foes, events, round_number=1, source_effect=None):
     if idx>=len(mine) or mine[idx] is not attacker or attacker.get("current_hp",0)<=0: return False
     if not any(u and u.get("current_hp",0)>0 for u in foes): return False
     apply_before_attack(attacker,idx,side,mine,events)
@@ -1209,6 +1340,8 @@ def perform_attack_action(attacker, idx, side, mine, foes, events, round_number=
     if target.get("current_hp",0)>0: target.pop("_blood_killer",None)
     attacker.pop("_blood_killer",None)
     target["current_hp"]-=dmg; attacker["current_hp"]-=counter
+    apply_health_lock(target,ti,target_side,events)
+    apply_health_lock(attacker,idx,side,events)
     trigger_injury_growth(target,ti,target_side,foes,events,dmg);trigger_injury_growth(attacker,idx,side,mine,events,counter)
     target_venom=apply_venom_after_damage(attacker,target,dmg); attacker_venom=apply_venom_after_damage(target,attacker,counter)
     target_dead=target["current_hp"]<=0; attacker_dead=attacker["current_hp"]<=0
@@ -1222,8 +1355,7 @@ def perform_attack_action(attacker, idx, side, mine, foes, events, round_number=
     cleave_deaths=[]
     if attacker.get("cleave") or "cleave" in attacker.get("mechanics",[]):
         # 阵亡单位留下的内部槽位不再隔断横斩：寻找目标两侧最近的存活棋子。
-        left_index=next((ci for ci in range(ti-1,-1,-1) if foes[ci] and foes[ci].get("current_hp",0)>0),None)
-        right_index=next((ci for ci in range(ti+1,len(foes)) if foes[ci] and foes[ci].get("current_hp",0)>0),None)
+        left_index,right_index=spatial_neighbors(foes,ti,lambda u:u.get("current_hp",0)>0)
         for ci in (left_index,right_index):
             if ci is not None:
                 deal_cleave_damage(attacker,idx,side,mine,foes,ci,foes[ci],attacker.get("attack",0),events,cleave_deaths)
@@ -1238,17 +1370,30 @@ def perform_attack_action(attacker, idx, side, mine, foes, events, round_number=
     return True
 
 
-def tavern_battle(left,right,round_number=1,shop_level=1):
+def tavern_battle(left,right,round_number=1,shop_level=1,aegir_attack_bonus=0,life_tower_effects=None):
+    tower_token=_life_tower_effects.set({"left":life_tower_effects or [],"right":[]})
+    token=_aegir_game_attack.set({"left":int(aegir_attack_bonus),"right":0})
+    try:
+        result=_tavern_battle(left,right,round_number,shop_level)
+        result["aegir_attack_bonus"]=_aegir_game_attack.get()["left"]
+        return result
+    finally:
+        _aegir_game_attack.reset(token)
+        _life_tower_effects.reset(tower_token)
+
+def _tavern_battle(left,right,round_number=1,shop_level=1):
     left=[dict(u,current_hp=u["max_hp"]) if u else None for u in left[:7]]; right=[dict(u,current_hp=u["max_hp"]) if u else None for u in right[:7]]
     left += [None]*(7-len(left)); right += [None]*(7-len(right))
     for team in (left,right):
-        for unit in team:
+        for index,unit in enumerate(team):
             if unit:
+                unit["battle_position"]=index
+                unit.pop("_summon_tail",None)
                 unit["battle_shop_level"]=max(1,min(MAX_SHOP_LEVEL,int(shop_level or 1)))
                 unit.pop("opponent_attack_trigger_count",None)
                 unit.pop("enemy_death_copy_count",None)
                 unit.pop("enemy_death_growth_count",None)
-    turn=first_striker(left,right); cursor={"left":0,"right":0}; events=[]
+    turn=first_striker(left,right); cursor={"left":-1,"right":-1}; events=[]
     apply_logistics_effects(left,"left",events,right); apply_logistics_effects(right,"right",events,left)
     # Preserve a snapshot before temporary battle effects or deaths. The player
     # receives these permanent logistics gains even when the unit later dies.
@@ -1262,10 +1407,10 @@ def tavern_battle(left,right,round_number=1,shop_level=1):
     apply_temporary_logistics_effects(left,"left",events); apply_temporary_logistics_effects(right,"right",events)
     apply_battle_start_effects(left,"left",events); apply_battle_start_effects(right,"right",events)
     resolve_precombat_phase("initiative",left,right,turn,events)
-    def living(team): return [(i,u) for i,u in enumerate(team) if u and u["current_hp"]>0]
+    def living(team): return [(i,u) for i,u in battle_entries(team) if u and u["current_hp"]>0]
     while living(left) and living(right):
         mine,foes=(left,right) if turn=="left" else (right,left)
-        choices=living(mine); idx,attacker=next(((i,u) for i,u in choices if i>=cursor[turn]),choices[0]); cursor[turn]=(idx+1)%7
+        choices=living(mine); idx,attacker=next(((i,u) for i,u in choices if u.get("battle_position",i)>cursor[turn]),choices[0]); cursor[turn]=attacker.get("battle_position",idx)
         perform_attack_action(attacker,idx,turn,mine,foes,events,round_number)
         turn="right" if turn=="left" else "left"
     left_alive=living(left); right_alive=living(right)
@@ -1310,7 +1455,7 @@ def enemy_board(round_number, shop_level=1):
     # generated. Shop refreshes, purchases and board/bench operations neither
     # alter this pool nor consume this independent random source.
     max_stars=1 if round_number==1 else max(1,min(MAX_SHOP_LEVEL,int(shop_level or 1)+1))
-    pool=[c for c in cards() if c["card_type"]=="unit" and int(c.get("stars",c.get("tier",1)) or 1)<=max_stars]
+    pool=[c for c in cards() if c["card_type"]=="unit" and not c.get("summon_only") and int(c.get("stars",c.get("tier",1)) or 1)<=max_stars]
     board=[None]*7; ai_random=random.SystemRandom()
     weights=enemy_selection_weights(pool,round_number,shop_level)
     for i in range(amount):
@@ -1365,7 +1510,7 @@ class Handler(SimpleHTTPRequestHandler):
                 current=player(self.player_id())
                 return self.json(enemy_board(int(data.get("round",1)),current["shop_level"]))
             if path=="/api/battle":
-                rn=int(data.get("round",1)); current=player(self.player_id()); result=tavern_battle(data.get("left",[]),data.get("right",[]),rn,current["shop_level"]); result.update(settle_battle(result,rn,self.player_id())); return self.json(result)
+                rn=int(data.get("round",1)); current=player(self.player_id()); result=tavern_battle(data.get("left",[]),data.get("right",[]),rn,current["shop_level"],data.get("aegir_attack_bonus",0),data.get("life_tower_effects",[])); result.update(settle_battle(result,rn,self.player_id())); return self.json(result)
             return self.json({"error":"not found"},404)
         except (KeyError,ValueError) as e: return self.json({"error":str(e)},400)
         except Exception:

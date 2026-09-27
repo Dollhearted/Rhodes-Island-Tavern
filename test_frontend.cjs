@@ -47,7 +47,7 @@ async function testBattleMerge(skip,owned=2){
   // Combat-only summoned copy must not count towards permanent triples.
   const res={left:[...structuredClone(state.board).filter(Boolean),{...base,summoned_by_phase:'legacy'}],right:[],winner:'left',round:3,events:[{type:'gain_card',side:'left',from:'死芒',card:{...base},card_name:base.name}]};
   const ctx=vm.createContext({s:state,compact,pad,captureTripleSources:occ=>occ.map(o=>o.u),queueTripleAnimation:(sources,golden)=>{assert.equal(sources.length,3);assert.equal(golden.golden,true)},cloneData:structuredClone,emptyBench:()=>state.bench.findIndex(x=>!x),log(){},draw(){},clearInterval(){},setTimeout(){},api:async()=>res,syncPlayer(){},startPrep:async()=>{},battleAnchors:new Map(),cacheBattleAnchors(){},sleep:async()=>{}});
-  loadFunctions(ctx,['hasMark','setGuard','baseUnitById','applyGoldenOverrides','extraStatSum','goldenCopy','collectMergePieces','phantomCanReplace','findTripleMerge','tryCombineTriples','cleanupAfterBattle','restoreBoardAfterBattle','applyEventLog','fight']);
+  loadFunctions(ctx,['hasMark','setGuard','baseUnitById','applyGoldenOverrides','extraStatSum','applyAegirGameBonus','goldenCopy','collectMergePieces','phantomCanReplace','findTripleMerge','tryCombineTriples','cleanupAfterBattle','restoreBoardAfterBattle','applyEventLog','fight']);
   ctx.applyBattleEventState=()=>{};
   vm.runInContext(extract('async function animateEvents(', 'async function refresh('),ctx);
   await ctx.fight();
@@ -180,4 +180,96 @@ async function testTripleAnimationQueue(){
   assert.equal(s.mergeAnimating,false);assert.equal(s.mergeHidden.size,0);
   assert.equal(animations.at(-1).frames.at(-1).left,'500px');
 }
-(async()=>{await testAnimation('bullet_batch',1);await testAnimation('w_barrage',3);await testAnimation('w_barrage',3,2);await testSelling();testGuard();for(const skip of [false,true]){await testBattleMerge(skip);await testBattleMerge(skip,1)}testTripleHints();testSaleOptions();testDeadUnitsStayHidden();testAssimilatedUnitsStayRemoved();await testPointerRelease();await testTutorialRules();await testTripleAnimationQueue();console.log('PASS: bullets, sales, guard, battle merge, triple hints and pointer release/cancel/blur')})().catch(e=>{console.error(e);process.exitCode=1});
+async function testComboPlaybackAndSeaKeywords(){
+  for(const script of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))new vm.Script(script[1]);
+  const order=[],ctx=vm.createContext({s:{},battleAnchors:new Map(),cacheBattleAnchors(){},draw(){},sleep:async()=>{},animateCombo:async e=>order.push('combo'+e.strike),animateCollision:async()=>order.push('attack'),applyBattleEventState(){},applyEventLog(){},esc:x=>x,hasMark:(u,k)=>!!u[k]});
+  vm.runInContext(extract('async function animateEvents(', 'async function refresh('),ctx);
+  await ctx.animateEvents({events:[{type:'combo_strike',strike:1},{damage_type:'collision'},{type:'combo_strike',strike:2},{damage_type:'collision'}],left:[],right:[]});
+  assert.deepEqual(order,['combo1','attack','combo2','attack']);
+  vm.runInContext(extract('function renderDesc(', 'function mechanicDetails('),ctx);
+  const start=html.indexOf('function mechanicDetails(');vm.runInContext(html.slice(start,html.indexOf('\n',start)),ctx);
+  for(const name of ['海怪','底海滑动者','钵海收割者','囊海爬行者','始海穿刺者']){
+    assert.match(ctx.renderDesc(name),/kw-sea-monster/);
+    assert.match(ctx.mechanicDetails({description:'召唤'+name}),/阿戈尔阵营棋子召唤的海怪/);
+  }
+  assert.match(ctx.mechanicDetails({combo:true}),/攻击时，可以连续攻击两次，唯一效果不可叠加/);
+}
+function testSummonVisualOrder(){
+  const ctx=vm.createContext({s:{},live:u=>u.current_hp,card:(u,w,i)=>u.id+':'+i});
+  loadFunctions(ctx,['battleCards']);
+  const rendered=ctx.battleCards([{id:'summon',current_hp:1,battle_position:2.5},{id:'left',current_hp:1,battle_position:1},null,{id:'right',current_hp:1,battle_position:3}],'board');
+  assert.ok(rendered.indexOf('left:1')<rendered.indexOf('summon:0'));
+  assert.ok(rendered.indexOf('summon:0')<rendered.indexOf('right:3'));
+}
+function testPrepSummon(){
+  const watcher={name:'引星棘刺',card_type:'unit',faction:'阿戈尔',attack:4,max_hp:8,aegir_summon_game_attack:1},unit={name:'傀影',card_type:'unit',faction:'任意',attack:4,max_hp:4},combatWatcher={name:'海霓',card_type:'unit',faction:'阿戈尔',attack:4,max_hp:3,sea_summon_buff:4,aegir_summon_lock_buff:8,aegir_summon_attack_ratio:1};
+  const s={round:1,phase:'备战',board:[watcher,combatWatcher,unit],bench:[],shop:[],lifeTowerEffects:[{amount:2,expires:2}]};
+  const ctx=vm.createContext({s,compact:a=>a.filter(Boolean),cloneData:structuredClone,log(){}});
+  loadFunctions(ctx,['triggerClientMorale','applyClientBuff','applyAegirGameBonus','syncAegirGameBonus']);
+  vm.runInContext(extract('function triggerPrepSummon(', 'function onDeploy('),ctx);
+  ctx.triggerPrepSummon(unit);assert.equal(unit.attack,7);assert.equal(unit.max_hp,6);assert.equal(unit.lock_hp,undefined);assert.equal(s.aegirAttackBonus,1);
+  const outsider={name:'外族',faction:'炎',card_type:'unit',attack:1,max_hp:1};s.board.push(outsider);ctx.triggerPrepSummon(outsider);assert.equal(outsider.attack,3);assert.equal(s.aegirAttackBonus,1);
+}
+function testPhantomExternalMechanisms(){
+  const base={id:'Gladiia',card_type:'unit',faction:'阿戈尔',attack:5,max_hp:4,mechanics:[]},phantom={id:'Phantom',card_type:'unit',faction:'任意',attack:4,max_hp:4,mechanics:[]};
+  const gifted={...phantom,attack:7,lock_hp:true,revive:true,guard:true,shield:true,mechanics:['lock_hp','revive','guard','shield']};
+  const s={cards:[base,phantom],board:[base,{...base}],bench:[gifted],phase:'备战'};
+  const ctx=vm.createContext({s,cloneData:structuredClone,compact:a=>a.filter(Boolean),pad:a=>a.filter(Boolean),emptyBench:()=>s.bench.findIndex(x=>!x),captureTripleSources:()=>[],queueTripleAnimation(){},log(){}});
+  loadFunctions(ctx,['hasMark','setGuard','baseUnitById','applyGoldenOverrides','extraStatSum','applyAegirGameBonus','goldenCopy','tryCombineTriples']);
+  let planned=false;ctx.findTripleMerge=()=>{if(planned)return null;planned=true;return {base,occ:[{w:'board',i:0,u:base},{w:'board',i:1,u:s.board[1]},{w:'bench',i:0,u:gifted}]}};
+  ctx.tryCombineTriples();const result=s.bench[0];
+  for(const key of ['lock_hp','revive','guard','shield'])assert.equal(ctx.hasMark(result,key),true);
+  assert.equal(result.attack,13);assert.equal(result.id,'Gladiia');assert.equal(result.golden,true);
+}
+function testHealthLockInheritance(){
+  const base={id:'Gladiia',card_type:'unit',faction:'阿戈尔',attack:5,max_hp:4,mechanics:[]};
+  const ctx=vm.createContext({s:{cards:[base]},cloneData:structuredClone});
+  loadFunctions(ctx,['hasMark','setGuard','baseUnitById','applyGoldenOverrides','extraStatSum','applyAegirGameBonus','goldenCopy','intrinsicDefenseSource','inheritDefenses','badgeHtml']);
+  for(const grant of [{lock_hp:true},{mechanics:['lock_hp']}]){
+    const boosted={...base,...grant},golden=ctx.goldenCopy(base,[base,boosted,base]);
+    assert.equal(ctx.hasMark(golden,'lock_hp'),true);
+    assert.equal(golden.mechanics.filter(x=>x==='lock_hp').length,1);
+    assert.match(ctx.badgeHtml(golden),/health-lock/);
+    const ceobe={id:'Ceobe',mechanics:[]};ctx.inheritDefenses(ceobe,boosted);ctx.inheritDefenses(ceobe,boosted);
+    assert.equal(ceobe.lock_hp,true);assert.equal(ceobe.mechanics.filter(x=>x==='lock_hp').length,1);
+  }
+  const plain=ctx.goldenCopy(base,[base,base,base]);assert.equal(ctx.hasMark(plain,'lock_hp'),false);
+  const ceobe={id:'Ceobe',mechanics:[]};ctx.inheritDefenses(ceobe,base);assert.equal(ctx.hasMark(ceobe,'lock_hp'),false);
+}
+function testAegirGameBonus(){
+  const base={id:'Skadi',card_type:'unit',faction:'阿戈尔',attack:4,max_hp:1,mechanics:[]};
+  const board={...base},bench={...base},shop={...base},other={card_type:'unit',faction:'炎',attack:3};
+  const s={aegirAttackBonus:2,phase:'备战',board:[board,other],bench:[bench],shop:[shop],cards:[base]};
+  const ctx=vm.createContext({s,cloneData:structuredClone});
+  loadFunctions(ctx,['applyAegirGameBonus','syncAegirGameBonus','baseUnitById','applyGoldenOverrides','extraStatSum','hasMark','setGuard','goldenCopy']);
+  ctx.syncAegirGameBonus();ctx.syncAegirGameBonus();
+  for(const u of [board,bench,shop])assert.equal(u.attack,6);
+  assert.equal(other.attack,3);assert.equal(base.attack,4);
+  const fresh={...base};ctx.applyAegirGameBonus(fresh);assert.equal(fresh.attack,6);
+  const golden=ctx.goldenCopy(board,[board,bench,shop]);assert.equal(golden.attack,10);
+  ctx.applyAegirGameBonus(golden);assert.equal(golden.attack,10);
+  s.aegirAttackBonus=3;ctx.applyAegirGameBonus(golden);assert.equal(golden.attack,11);
+}
+async function testLifeTowerDropRoutes(){
+  for(const route of ['board','unit']){
+    const unit={name:'友方',attack:1,max_hp:2},s={phase:'备战',busy:false,round:1,board:[unit],bench:[{card_type:'skill',effect:'life_tower',target_scope:'board',effect_value:3}]};
+    let supports=0;const ctx=vm.createContext({s,window:{},readDrag:()=>({type:'bench',index:0}),compact:a=>a.filter(Boolean),log(){},draw(){},clearDrop(){},triggerPlayerSupports:()=>supports++});
+    loadFunctions(ctx,['triggerClientMorale','applyClientBuff','applyLifeTower','useBenchSkill']);
+    for(const name of ['allowBoardAreaSkillDrop','dropSkillToBoardArea','allowUnitSkillDrop','dropSkillToUnit']){const start=html.indexOf('window.'+name+'=');vm.runInContext(html.slice(start,html.indexOf('\n',start)),ctx);ctx[name]=ctx.window[name]}
+    let accepted=false;const classes=[],ev={preventDefault(){accepted=true},stopPropagation(){},dataTransfer:{},currentTarget:{classList:{add:c=>classes.push(c)}}};
+    if(route==='board'){ctx.allowBoardAreaSkillDrop(ev);await ctx.dropSkillToBoardArea(ev)}else{ctx.allowUnitSkillDrop(ev,0);await ctx.dropSkillToUnit(ev,0)}
+    assert.ok(accepted);assert.ok(classes.includes('drop-target'));assert.equal(s.bench[0],null);assert.equal(unit.attack,4);assert.equal(unit.max_hp,5);assert.equal(supports,1);
+  }
+}
+function testLifeTowerExpiry(){
+  const u={name:'化境棋子',attack:2,max_hp:3,morale:{attack:1,max_hp:2}},bench={attack:5,max_hp:6},s={round:3,board:[u],bench:[bench]};
+  const ctx=vm.createContext({s,compact:a=>a.filter(Boolean),log(){}});
+  for(const name of ['triggerClientMorale','applyClientBuff','applyLifeTower','expireLifeTower']){const start=html.indexOf('function '+name+'(');vm.runInContext(html.slice(start,html.indexOf('\n',start)),ctx)}
+  ctx.applyLifeTower(3);ctx.applyLifeTower(2);
+  assert.equal(u.attack,9);assert.equal(u.max_hp,12);
+  assert.equal(bench.attack,5);assert.equal(bench.max_hp,6);
+  ctx.expireLifeTower();assert.equal(u.attack,9);
+  s.round=4;ctx.expireLifeTower();assert.equal(u.attack,4);assert.equal(u.max_hp,7);assert.equal(u.life_tower_buffs,undefined);
+  ctx.expireLifeTower();assert.equal(u.attack,4);
+}
+(async()=>{testPrepSummon();testPhantomExternalMechanisms();testHealthLockInheritance();testSummonVisualOrder();await testLifeTowerDropRoutes();testAegirGameBonus();testLifeTowerExpiry();await testComboPlaybackAndSeaKeywords();await testAnimation('bullet_batch',1);await testAnimation('w_barrage',3);await testAnimation('w_barrage',3,2);await testSelling();testGuard();for(const skip of [false,true]){await testBattleMerge(skip);await testBattleMerge(skip,1)}testTripleHints();testSaleOptions();testDeadUnitsStayHidden();testAssimilatedUnitsStayRemoved();await testPointerRelease();await testTutorialRules();await testTripleAnimationQueue();console.log('PASS: bullets, sales, guard, battle merge, triple hints and pointer release/cancel/blur')})().catch(e=>{console.error(e);process.exitCode=1});

@@ -1624,5 +1624,501 @@
       1457
     ],
     "note": "PRTS 精英二立绘；2:3 人物裁剪，向上移动取景框使人物下移，脸部避开阵营及星级标签"
+  },
+  {
+    "id": "Underflow",
+    "name": "深巡",
+    "english_name": "Underflow",
+    "tier": 3,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_深巡_2.png",
+    "url": "https://media.prts.wiki/0/01/%E7%AB%8B%E7%BB%98_%E6%B7%B1%E5%B7%A1_2.png",
+    "file": "深巡_精二.webp",
+    "thumb": "深巡_精二.webp",
+    "webp": "深巡_精二.webp",
+    "link": "深巡_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 146628,
+    "crop_box": [
+      910,
+      853,
+      1764,
+      2133
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Lucilla",
+    "name": "海霓",
+    "english_name": "Lucilla",
+    "tier": 3,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_海霓_2.png",
+    "url": "https://media.prts.wiki/4/46/%E7%AB%8B%E7%BB%98_%E6%B5%B7%E9%9C%93_2.png",
+    "file": "海霓_精二.webp",
+    "thumb": "海霓_精二.webp",
+    "webp": "海霓_精二.webp",
+    "link": "海霓_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 140450,
+    "crop_box": [
+      806,
+      654,
+      1659,
+      1934
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Deepcolor",
+    "name": "深海色",
+    "english_name": "Deepcolor",
+    "tier": 1,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_深海色_2.png",
+    "url": "https://media.prts.wiki/7/7c/%E7%AB%8B%E7%BB%98_%E6%B7%B1%E6%B5%B7%E8%89%B2_2.png",
+    "file": "深海色_精二.webp",
+    "thumb": "深海色_精二.webp",
+    "webp": "深海色_精二.webp",
+    "link": "深海色_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 125726,
+    "crop_box": [
+      338,
+      64,
+      698,
+      605
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Andreana",
+    "name": "安哲拉",
+    "english_name": "Andreana",
+    "tier": 3,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_安哲拉_2.png",
+    "url": "https://media.prts.wiki/4/45/%E7%AB%8B%E7%BB%98_%E5%AE%89%E5%93%B2%E6%8B%89_2.png",
+    "file": "安哲拉_精二.webp",
+    "thumb": "安哲拉_精二.webp",
+    "webp": "安哲拉_精二.webp",
+    "link": "安哲拉_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 145176,
+    "crop_box": [
+      501,
+      531,
+      1221,
+      1612
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Specter",
+    "name": "幽灵鲨",
+    "english_name": "Specter",
+    "tier": 1,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_幽灵鲨_2.png",
+    "url": "https://media.prts.wiki/d/d3/%E7%AB%8B%E7%BB%98_%E5%B9%BD%E7%81%B5%E9%B2%A8_2.png",
+    "file": "幽灵鲨_精二.webp",
+    "thumb": "幽灵鲨_精二.webp",
+    "webp": "幽灵鲨_精二.webp",
+    "link": "幽灵鲨_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 134694,
+    "crop_box": [
+      470,
+      167,
+      1267,
+      1362
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Gladiia",
+    "name": "歌蕾蒂娅",
+    "english_name": "Gladiia",
+    "tier": 4,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_歌蕾蒂娅_2.png",
+    "url": "https://media.prts.wiki/6/61/%E7%AB%8B%E7%BB%98_%E6%AD%8C%E8%95%BE%E8%92%82%E5%A8%85_2.png",
+    "file": "歌蕾蒂娅_精二.webp",
+    "thumb": "歌蕾蒂娅_精二.webp",
+    "webp": "歌蕾蒂娅_精二.webp",
+    "link": "歌蕾蒂娅_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 164356,
+    "crop_box": [
+      537,
+      468,
+      1170,
+      1417
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Skadi",
+    "name": "斯卡蒂",
+    "english_name": "Skadi",
+    "tier": 4,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_斯卡蒂_2.png",
+    "url": "https://media.prts.wiki/b/b8/%E7%AB%8B%E7%BB%98_%E6%96%AF%E5%8D%A1%E8%92%82_2.png",
+    "file": "斯卡蒂_精二.webp",
+    "thumb": "斯卡蒂_精二.webp",
+    "webp": "斯卡蒂_精二.webp",
+    "link": "斯卡蒂_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 116056,
+    "crop_box": [
+      675,
+      470,
+      1396,
+      1551
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Ulpianus",
+    "name": "乌尔比安",
+    "english_name": "Ulpianus",
+    "tier": 6,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_乌尔比安_2.png",
+    "url": "https://media.prts.wiki/e/e7/%E7%AB%8B%E7%BB%98_%E4%B9%8C%E5%B0%94%E6%AF%94%E5%AE%89_2.png",
+    "file": "乌尔比安_精二.webp",
+    "thumb": "乌尔比安_精二.webp",
+    "webp": "乌尔比安_精二.webp",
+    "link": "乌尔比安_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 165870,
+    "crop_box": [
+      1223,
+      929,
+      1991,
+      2081
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Skadi the Corrupting Heart",
+    "name": "浊心斯卡蒂",
+    "english_name": "Skadi the Corrupting Heart",
+    "tier": 6,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_浊心斯卡蒂_2.png",
+    "url": "https://media.prts.wiki/b/b3/%E7%AB%8B%E7%BB%98_%E6%B5%8A%E5%BF%83%E6%96%AF%E5%8D%A1%E8%92%82_2.png",
+    "file": "浊心斯卡蒂_精二.webp",
+    "thumb": "浊心斯卡蒂_精二.webp",
+    "webp": "浊心斯卡蒂_精二.webp",
+    "link": "浊心斯卡蒂_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 139368,
+    "crop_box": [
+      834,
+      692,
+      1669,
+      1944
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Specter the Unchained",
+    "name": "归溟幽灵鲨",
+    "english_name": "Specter the Unchained",
+    "tier": 5,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_归溟幽灵鲨_2.png",
+    "url": "https://media.prts.wiki/1/16/%E7%AB%8B%E7%BB%98_%E5%BD%92%E6%BA%9F%E5%B9%BD%E7%81%B5%E9%B2%A8_2.png",
+    "file": "归溟幽灵鲨_精二.webp",
+    "thumb": "归溟幽灵鲨_精二.webp",
+    "webp": "归溟幽灵鲨_精二.webp",
+    "link": "归溟幽灵鲨_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 167416,
+    "crop_box": [
+      739,
+      566,
+      1461,
+      1650
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Thorns",
+    "name": "棘刺",
+    "english_name": "Thorns",
+    "tier": 4,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_棘刺_2.png",
+    "url": "https://media.prts.wiki/4/41/%E7%AB%8B%E7%BB%98_%E6%A3%98%E5%88%BA_2.png",
+    "file": "棘刺_精二.webp",
+    "thumb": "棘刺_精二.webp",
+    "webp": "棘刺_精二.webp",
+    "link": "棘刺_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 110808,
+    "crop_box": [
+      630,
+      15,
+      1388,
+      1153
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Thorns the Lodestar",
+    "name": "引星棘刺",
+    "english_name": "Thorns the Lodestar",
+    "tier": 5,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_引星棘刺_2.png",
+    "url": "https://media.prts.wiki/b/bf/%E7%AB%8B%E7%BB%98_%E5%BC%95%E6%98%9F%E6%A3%98%E5%88%BA_2.png",
+    "file": "引星棘刺_精二.webp",
+    "thumb": "引星棘刺_精二.webp",
+    "webp": "引星棘刺_精二.webp",
+    "link": "引星棘刺_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 190962,
+    "crop_box": [
+      853,
+      550,
+      1631,
+      1716
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Lumen",
+    "name": "流明",
+    "english_name": "Lumen",
+    "tier": 5,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_流明_2.png",
+    "url": "https://media.prts.wiki/a/ae/%E7%AB%8B%E7%BB%98_%E6%B5%81%E6%98%8E_2.png",
+    "file": "流明_精二.webp",
+    "thumb": "流明_精二.webp",
+    "webp": "流明_精二.webp",
+    "link": "流明_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 138728,
+    "crop_box": [
+      508,
+      554,
+      1191,
+      1578
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Highmore",
+    "name": "海沫",
+    "english_name": "Highmore",
+    "tier": 2,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_海沫_2.png",
+    "url": "https://media.prts.wiki/b/bc/%E7%AB%8B%E7%BB%98_%E6%B5%B7%E6%B2%AB_2.png",
+    "file": "海沫_精二.webp",
+    "thumb": "海沫_精二.webp",
+    "webp": "海沫_精二.webp",
+    "link": "海沫_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 115836,
+    "crop_box": [
+      470,
+      402,
+      1229,
+      1540
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Whisperain",
+    "name": "絮雨",
+    "english_name": "Whisperain",
+    "tier": 2,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_絮雨_2.png",
+    "url": "https://media.prts.wiki/8/87/%E7%AB%8B%E7%BB%98_%E7%B5%AE%E9%9B%A8_2.png",
+    "file": "絮雨_精二.webp",
+    "thumb": "絮雨_精二.webp",
+    "webp": "絮雨_精二.webp",
+    "link": "絮雨_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 153952,
+    "crop_box": [
+      757,
+      878,
+      1534,
+      2043
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Glaucus",
+    "name": "格劳克斯",
+    "english_name": "Glaucus",
+    "tier": 2,
+    "faction": "阿戈尔",
+    "status": "ok",
+    "source_file": "立绘_格劳克斯_2.png",
+    "url": "https://media.prts.wiki/4/45/%E7%AB%8B%E7%BB%98_%E6%A0%BC%E5%8A%B3%E5%85%8B%E6%96%AF_2.png",
+    "file": "格劳克斯_精二.webp",
+    "thumb": "格劳克斯_精二.webp",
+    "webp": "格劳克斯_精二.webp",
+    "link": "格劳克斯_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 115238,
+    "crop_box": [
+      845,
+      444,
+      1570,
+      1532
+    ],
+    "name_source": "https://prts.wiki/w/泰拉词库",
+    "note": "PRTS 精英二立绘；2:3 人物居中裁剪，脸部避开顶部阵营、星级标签"
+  },
+  {
+    "id": "Deep Sea Slider",
+    "name": "底海滑动者",
+    "english_name": "Deep Sea Slider",
+    "enemy_id": "enemy_1148_dssbr",
+    "file": "底海滑动者_海怪.webp",
+    "url": "https://media.prts.wiki/6/63/%E5%A4%B4%E5%83%8F_%E6%95%8C%E4%BA%BA_%E5%BA%95%E6%B5%B7%E6%BB%91%E5%8A%A8%E8%80%85.png",
+    "tier": 1,
+    "faction": "阿戈尔",
+    "status": "PRTS敌人头像，召唤专属海怪",
+    "name_source": "https://github.com/Kengxxiao/ArknightsGameData_YoStar/blob/main/en_US/gamedata/excel/enemy_handbook_table.json",
+    "dim": [
+      480,
+      720
+    ]
+  },
+  {
+    "id": "Basin Sea Reaper",
+    "name": "钵海收割者",
+    "english_name": "Basin Sea Reaper",
+    "enemy_id": "enemy_1151_dslntc",
+    "file": "钵海收割者_海怪.webp",
+    "url": "https://media.prts.wiki/5/5d/%E5%A4%B4%E5%83%8F_%E6%95%8C%E4%BA%BA_%E9%92%B5%E6%B5%B7%E6%94%B6%E5%89%B2%E8%80%85.png",
+    "tier": 1,
+    "faction": "阿戈尔",
+    "status": "PRTS敌人头像，召唤专属海怪",
+    "name_source": "https://github.com/Kengxxiao/ArknightsGameData_YoStar/blob/main/en_US/gamedata/excel/enemy_handbook_table.json",
+    "dim": [
+      480,
+      720
+    ]
+  },
+  {
+    "id": "Pocket Sea Crawler",
+    "name": "囊海爬行者",
+    "english_name": "Pocket Sea Crawler",
+    "enemy_id": "enemy_1152_dsurch",
+    "file": "囊海爬行者_海怪.webp",
+    "url": "https://media.prts.wiki/1/18/%E5%A4%B4%E5%83%8F_%E6%95%8C%E4%BA%BA_%E5%9B%8A%E6%B5%B7%E7%88%AC%E8%A1%8C%E8%80%85.png",
+    "tier": 1,
+    "faction": "阿戈尔",
+    "status": "PRTS敌人头像，召唤专属海怪",
+    "name_source": "https://github.com/Kengxxiao/ArknightsGameData_YoStar/blob/main/en_US/gamedata/excel/enemy_handbook_table.json",
+    "dim": [
+      480,
+      720
+    ]
+  },
+  {
+    "id": "Primal Sea Piercer",
+    "name": "始海穿刺者",
+    "english_name": "Primal Sea Piercer",
+    "enemy_id": "enemy_1153_dsexcu",
+    "file": "始海穿刺者_海怪.webp",
+    "url": "https://media.prts.wiki/d/d8/%E5%A4%B4%E5%83%8F_%E6%95%8C%E4%BA%BA_%E5%A7%8B%E6%B5%B7%E7%A9%BF%E5%88%BA%E8%80%85.png",
+    "tier": 1,
+    "faction": "阿戈尔",
+    "status": "PRTS敌人头像，召唤专属海怪",
+    "name_source": "https://github.com/Kengxxiao/ArknightsGameData_YoStar/blob/main/en_US/gamedata/excel/enemy_handbook_table.json",
+    "dim": [
+      480,
+      720
+    ]
   }
 ]

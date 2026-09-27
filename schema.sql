@@ -774,3 +774,205 @@ ON CONFLICT(id) DO UPDATE SET
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
     attack_range=excluded.attack_range, color=excluded.color,
     description=excluded.description, extras_json=excluded.extras_json;
+
+-- 阿戈尔
+
+-- 深巡 / Underflow
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Underflow','深巡','阿戈尔干员','阿戈尔',3,3,3,1,'#153c72','锁血；上场：选择1个阿戈尔阵营棋子，使其获得+3/+3和锁血','{"mechanics":["lock_hp","on_deploy"],"lock_hp":true,"on_deploy":{"type":"select_buff_lock_hp","faction":"阿戈尔","attack":3,"max_hp":3},"golden_description":"锁血；上场：选择1个阿戈尔阵营棋子，使其获得+6/+6和锁血","golden_overrides":{"on_deploy":{"type":"select_buff_lock_hp","faction":"阿戈尔","attack":6,"max_hp":6}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 海霓 / Lucilla
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Lucilla','海霓','阿戈尔干员','阿戈尔',3,3,4,1,'#153c72','战斗中，友方棋子召唤海怪时，使其获得+4/+4','{"mechanics":[],"sea_summon_buff":4,"golden_description":"战斗中，友方棋子召唤海怪时，使其获得+8/+8","golden_overrides":{"sea_summon_buff":8}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 深海色 / Deepcolor
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Deepcolor','深海色','阿戈尔干员','阿戈尔',1,2,1,1,'#153c72','遗计：召唤2只底海滑动者','{"mechanics":["legacy"],"legacy":{"type":"summon","summon_id":"Deep Sea Slider","count":2},"golden_description":"遗计：召唤4只底海滑动者","golden_overrides":{"legacy":{"type":"summon","summon_id":"Deep Sea Slider","count":4}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 安哲拉 / Andreana
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Andreana','安哲拉','阿戈尔干员','阿戈尔',3,3,4,1,'#153c72','遗计：随机召唤2只海怪','{"mechanics":["legacy"],"legacy":{"type":"summon_random_sea_monsters","count":2},"golden_description":"遗计：随机召唤4只海怪","golden_overrides":{"legacy":{"type":"summon_random_sea_monsters","count":4}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 幽灵鲨 / Specter
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Specter','幽灵鲨','阿戈尔干员','阿戈尔',1,2,2,1,'#153c72','嘲讽；锁血','{"mechanics":["guard","lock_hp"],"guard":true,"lock_hp":true,"golden_description":"嘲讽；锁血","golden_overrides":{}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 歌蕾蒂娅 / Gladiia
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Gladiia','歌蕾蒂娅','阿戈尔干员','阿戈尔',4,4,5,1,'#153c72','战斗中，友方召唤阿戈尔阵营棋子时，使其获得歌蕾蒂娅的一半攻击力','{"mechanics":[],"aegir_summon_attack_ratio":0.5,"golden_description":"战斗中，友方召唤阿戈尔阵营棋子时，使其获得歌蕾蒂娅的1倍攻击力","golden_overrides":{"aegir_summon_attack_ratio":1}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 斯卡蒂 / Skadi
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Skadi','斯卡蒂','阿戈尔干员','阿戈尔',4,1,4,1,'#153c72','复活；遗计：永久使本场游戏的阿戈尔阵营棋子获得+1攻击力','{"mechanics":["revive","legacy","permanent"],"revive":true,"legacy":{"type":"aegir_game_attack","amount":1},"golden_description":"复活；遗计：永久使本场游戏的阿戈尔阵营棋子获得+2攻击力","golden_overrides":{"legacy":{"type":"aegir_game_attack","amount":2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 乌尔比安 / Ulpianus
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Ulpianus','乌尔比安','阿戈尔干员','阿戈尔',6,6,6,1,'#153c72','遗计：随机召唤2个阿戈尔阵营棋子，并使其获得+3/+3','{"mechanics":["legacy"],"legacy":{"type":"summon_random_aegir","count":2,"amount":3},"golden_description":"遗计：随机召唤4个阿戈尔阵营棋子，并使其获得+6/+6","golden_overrides":{"legacy":{"type":"summon_random_aegir","count":4,"amount":6}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 浊心斯卡蒂 / Skadi the Corrupting Heart
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Skadi the Corrupting Heart','浊心斯卡蒂','阿戈尔干员','阿戈尔',6,9,6,1,'#153c72','锁血；战斗中，友方召唤阿戈尔阵营棋子时，使其获得+8/+8和锁血','{"mechanics":["lock_hp"],"lock_hp":true,"aegir_summon_lock_buff":8,"golden_description":"锁血；战斗中，友方召唤阿戈尔阵营棋子时，使其获得+16/+16和锁血","golden_overrides":{"aegir_summon_lock_buff":16}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 归溟幽灵鲨 / Specter the Unchained
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Specter the Unchained','归溟幽灵鲨','阿戈尔干员','阿戈尔',5,5,5,1,'#153c72','遗计：召唤3只具有嘲讽的始海穿刺者','{"mechanics":["legacy"],"legacy":{"type":"summon","summon_id":"Primal Sea Piercer","count":3},"golden_description":"遗计：召唤6只具有嘲讽的始海穿刺者","golden_overrides":{"legacy":{"type":"summon","summon_id":"Primal Sea Piercer","count":6}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 棘刺 / Thorns
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Thorns','棘刺','阿戈尔干员','阿戈尔',4,4,2,1,'#153c72','鸩毒；先手：召唤1只具有鸩毒的囊海爬行者','{"mechanics":["venom","initiative"],"venom":true,"initiative":{"type":"summon","summon_id":"Pocket Sea Crawler","count":1},"golden_description":"鸩毒；先手：召唤2只具有鸩毒的囊海爬行者","golden_overrides":{"initiative":{"type":"summon","summon_id":"Pocket Sea Crawler","count":2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 引星棘刺 / Thorns the Lodestar
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Thorns the Lodestar','引星棘刺','阿戈尔干员','阿戈尔',5,8,4,1,'#153c72','友方召唤阿戈尔阵营棋子时，永久使本场游戏中的阿戈尔阵营棋子获得+1攻击力','{"mechanics":["permanent"],"aegir_summon_game_attack":1,"golden_description":"友方召唤阿戈尔阵营棋子时，永久使本场游戏中的阿戈尔阵营棋子获得+2攻击力","golden_overrides":{"aegir_summon_game_attack":2}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 流明 / Lumen
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Lumen','流明','阿戈尔干员','阿戈尔',5,6,3,1,'#153c72','死仇(1)：使自身及相邻的友方棋子永久获得+2/+2','{"mechanics":["death_feud","permanent"],"death_feud":{"type":"adjacent_permanent_buff","threshold":1,"amount":2},"golden_description":"死仇(1)：使自身及相邻的友方棋子永久获得+4/+4","golden_overrides":{"death_feud":{"type":"adjacent_permanent_buff","threshold":1,"amount":4}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 海沫 / Highmore
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Highmore','海沫','阿戈尔干员','阿戈尔',2,3,2,1,'#153c72','嘲讽；遗计：召唤1只具有连击的钵海收割者','{"mechanics":["guard","legacy"],"guard":true,"legacy":{"type":"summon","summon_id":"Basin Sea Reaper","count":1},"golden_description":"嘲讽；遗计：召唤2只具有连击的钵海收割者","golden_overrides":{"legacy":{"type":"summon","summon_id":"Basin Sea Reaper","count":2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 絮雨 / Whisperain
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Whisperain','絮雨','阿戈尔干员','阿戈尔',2,3,1,1,'#153c72','上场：获得1张【生命塔台】','{"mechanics":["on_deploy"],"on_deploy":{"type":"gain_life_tower","count":1},"golden_description":"上场：获得2张【生命塔台】","golden_overrides":{"on_deploy":{"type":"gain_life_tower","count":2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 格劳克斯 / Glaucus
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Glaucus','格劳克斯','阿戈尔干员','阿戈尔',2,2,2,1,'#153c72','上场：获得1张1/1的底海滑动者','{"mechanics":["on_deploy"],"on_deploy":{"type":"gain_card","card_id":"Deep Sea Slider","count":1},"golden_description":"上场：获得2张1/1的底海滑动者","golden_overrides":{"on_deploy":{"type":"gain_card","card_id":"Deep Sea Slider","count":2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 底海滑动者 / Deep Sea Slider（召唤专属）
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Deep Sea Slider','底海滑动者','海怪','阿戈尔',1,1,1,1,'#153c72','','{"summon_only": true, "sea_monster": true, "mechanics": [], "golden_description": "", "golden_overrides": {}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 钵海收割者 / Basin Sea Reaper（召唤专属）
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Basin Sea Reaper','钵海收割者','海怪','阿戈尔',1,4,4,1,'#153c72','连击','{"summon_only": true, "sea_monster": true, "mechanics": ["combo"], "golden_description": "连击", "golden_overrides": {}, "combo": true}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 囊海爬行者 / Pocket Sea Crawler（召唤专属）
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Pocket Sea Crawler','囊海爬行者','海怪','阿戈尔',1,1,1,1,'#153c72','鸩毒','{"summon_only": true, "sea_monster": true, "mechanics": ["venom"], "golden_description": "鸩毒", "golden_overrides": {}, "venom": true}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 始海穿刺者 / Primal Sea Piercer（召唤专属）
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Primal Sea Piercer','始海穿刺者','海怪','阿戈尔',1,5,5,1,'#153c72','嘲讽','{"summon_only": true, "sea_monster": true, "mechanics": ["guard"], "golden_description": "嘲讽", "golden_overrides": {}, "guard": true}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
