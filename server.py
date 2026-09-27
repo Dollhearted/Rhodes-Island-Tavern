@@ -16,7 +16,7 @@ SKILLS = [
  (f"ammo_pact_{lv}",f"\u94f3\u5f39\u534f\u7ea6.{lv}","skill","\u94f3\u5f39\u534f\u7ea6",lv,lv,f"\u9009\u62e91\u4e2a\u68cb\u5b50\uff0c\u4f7f\u5176\u83b7\u5f97+{lv}/+{lv}\u548c{(lv+1)//2}\u70b9\u94f3\u5f39\u5f3a\u5ea6","#9b6dff",(lv+1)//2) for lv in range(1,7)
 ]
 AI_POWER = [None,None,5,5,5,8,10,20,30,50,100,200,300,400]
-SHOP_UPGRADE_BASE_COSTS = [5,7,9,11,13]
+SHOP_UPGRADE_BASE_COSTS = [5,9,12,14,15]
 MAX_SHOP_LEVEL = 6
 UNIT_CARD_COST = 3
 UNIT_SELL_REFUND = 1
@@ -48,6 +48,7 @@ def initialise_database():
         cols={row[1] for row in con.execute("PRAGMA table_info(players)")}
         if "shop_level" not in cols: con.execute("ALTER TABLE players ADD COLUMN shop_level INTEGER NOT NULL DEFAULT 1")
         if "shop_discount" not in cols: con.execute("ALTER TABLE players ADD COLUMN shop_discount INTEGER NOT NULL DEFAULT 0")
+        if "shop_rounds" not in cols: con.execute("ALTER TABLE players ADD COLUMN shop_rounds INTEGER NOT NULL DEFAULT 0")
         if "total_gold_earned" not in cols: con.execute("ALTER TABLE players ADD COLUMN total_gold_earned INTEGER NOT NULL DEFAULT 3")
         con.executescript(schema)
         con.execute("INSERT OR IGNORE INTO players(id,gold,health,round,shop_level,shop_discount,total_gold_earned) VALUES('local',3,50,1,1,0,3)")
@@ -68,7 +69,10 @@ def unit_cards_from_db():
         units.append(data)
     return units
 
-def round_income(round_number): return 3+round_number
+def round_income(round_number): return min(10,3+round_number)
+
+def round_upgrade_discount(level, rounds_at_level):
+    return 2+max(0,int(rounds_at_level))//2+(1 if level>=4 else 0)
 def shop_slot_count(level): return 4+(1 if level>=3 else 0)+(1 if level>=5 else 0)
 def upgrade_cost_for(level, discount): return None if level>=MAX_SHOP_LEVEL else max(0,SHOP_UPGRADE_BASE_COSTS[level-1]-discount)
 
@@ -155,7 +159,7 @@ def card_purchase_cost(card): return UNIT_CARD_COST if card.get("card_type")=="u
 def player(player_id="local"):
     player_id=ensure_player(player_id)
     with db() as con:
-        row=con.execute("SELECT id,gold,health,round,shop_level,shop_discount,total_gold_earned FROM players WHERE id=?",(player_id,)).fetchone()
+        row=con.execute("SELECT id,gold,health,round,shop_level,shop_discount,shop_rounds,total_gold_earned FROM players WHERE id=?",(player_id,)).fetchone()
         if not row: raise ValueError("\u73a9\u5bb6\u4e0d\u5b58\u5728")
         return with_shop_status(row)
 
@@ -215,7 +219,7 @@ def upgrade_shop(player_id="local"):
         if row["shop_level"]>=MAX_SHOP_LEVEL: raise ValueError("\u5546\u5e97\u5df2\u6ee1\u7ea7")
         cost=upgrade_cost_for(row["shop_level"],row["shop_discount"])
         if row["gold"]<cost: raise ValueError("\u91d1\u5e01\u4e0d\u8db3")
-        con.execute("UPDATE players SET gold=?,shop_level=?,shop_discount=0 WHERE id=?",(row["gold"]-cost,row["shop_level"]+1,player_id))
+        con.execute("UPDATE players SET gold=?,shop_level=?,shop_discount=0,shop_rounds=0 WHERE id=?",(row["gold"]-cost,row["shop_level"]+1,player_id))
     data=player(player_id); data["spent"]=cost; return data
 
 def first_striker(left,right):
@@ -1281,10 +1285,10 @@ def tavern_battle(left,right,round_number=1,shop_level=1):
 
 def settle_battle(result, round_number, player_id="local"):
     with db() as con:
-        row=con.execute("SELECT gold,health FROM players WHERE id=?",(player_id,)).fetchone()
+        row=con.execute("SELECT gold,health,shop_level,shop_rounds FROM players WHERE id=?",(player_id,)).fetchone()
         if not row: raise ValueError("\u73a9\u5bb6\u4e0d\u5b58\u5728")
-        income=round_income(round_number); victory_bonus=1 if result["winner"]=="left" else 0; logistics_gold=int(result.get("logistics_gold",0) or 0); gold=row["gold"]+income+victory_bonus+logistics_gold; health=max(0,row["health"]-result["loss_damage"])
-        con.execute("UPDATE players SET gold=?,health=?,round=?,shop_discount=shop_discount+2,total_gold_earned=total_gold_earned+? WHERE id=?",(gold,health,round_number+1,income+victory_bonus+logistics_gold,player_id))
+        income=round_income(round_number); victory_bonus=0; logistics_gold=int(result.get("logistics_gold",0) or 0); gold=row["gold"]+income+victory_bonus+logistics_gold; health=max(0,row["health"]-result["loss_damage"])
+        con.execute("UPDATE players SET gold=?,health=?,round=?,shop_discount=shop_discount+?,shop_rounds=shop_rounds+1,total_gold_earned=total_gold_earned+? WHERE id=?",(gold,health,round_number+1,round_upgrade_discount(row["shop_level"],row["shop_rounds"]),income+victory_bonus+logistics_gold,player_id))
     data=player(player_id); data.update({"gold":gold,"health":health,"income":income,"victory_bonus":victory_bonus,"logistics_gold":logistics_gold}); return data
 
 def enemy_selection_weights(pool, round_number, shop_level):

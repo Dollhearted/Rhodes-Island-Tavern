@@ -6,6 +6,47 @@ import server
 
 
 class SaleTests(unittest.TestCase):
+    def test_economy_round_discounts_and_income(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(server,'DB_PATH',Path(directory)/'economy.sqlite'):
+                server.initialise_database()
+                for level,base in enumerate([5,9,12,14,15],1):
+                    server.reset_player()
+                    with server.db() as con: con.execute('UPDATE players SET shop_level=?,gold=100 WHERE id=?',(level,'local'))
+                    self.assertEqual(server.player()['upgrade_cost'],base)
+                    discount=0
+                    for turn in range(6):
+                        result=server.settle_battle({'winner':'left','loss_damage':0,'logistics_gold':20},turn+1)
+                        discount+=2+turn//2+(level>=4)
+                        self.assertEqual(result['shop_discount'],discount)
+                        self.assertEqual(result['upgrade_cost'],max(0,base-discount))
+                        self.assertEqual(result['victory_bonus'],0)
+                    server.reduce_upgrade_cost(2)
+                    self.assertEqual(server.player()['shop_rounds'],6)
+                    result=server.upgrade_shop()
+                    self.assertEqual(result['shop_rounds'],0)
+                    self.assertEqual(result['shop_discount'],0)
+                server.reset_player()
+                result=server.settle_battle({'winner':'left','loss_damage':0,'logistics_gold':50},14)
+                self.assertEqual(result['gold'],63)
+                self.assertEqual(result['income'],10)
+                self.assertEqual(server.gain_gold(100)['gold'],163)
+                self.assertEqual(server.reset_player()['shop_rounds'],0)
+                self.assertEqual([server.round_income(n) for n in range(1,15)],[4,5,6,7,8,9,10,10,10,10,10,10,10,10])
+
+    def test_existing_database_gets_round_counter_without_losing_gold(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'old.sqlite'
+            with sqlite3.connect(path) as con:
+                con.execute('CREATE TABLE players(id TEXT PRIMARY KEY,gold INTEGER,health INTEGER,round INTEGER,shop_level INTEGER,shop_discount INTEGER,total_gold_earned INTEGER)')
+                con.execute("INSERT INTO players VALUES('local',42,40,7,3,5,99)")
+            con.close()
+            with patch.object(server,'DB_PATH',path):
+                server.initialise_database();server.initialise_database()
+                player=server.player()
+                self.assertEqual((player['gold'],player['shop_discount'],player['shop_rounds']),(42,5,0))
+
     def test_enemy_stats_by_round(self):
         totals=[None,None,5,5,5,8,10,20,30,50,100,200,300,400]
         # Deliberately extreme base verifies later stats aren't floored at base.
