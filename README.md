@@ -51,8 +51,28 @@ cp data/autochess.sqlite data/autochess.sqlite.bak.$(date +%F)
 
 ## 界面与立绘
 
-- 前端整体采用明日方舟 / PRTS 终端风格：碳黑底（`#141516`）、深灰面板、45° 斜切角、1px 细线、四角准星、极淡网格与扫描线；强调色只用酸橙绿 `#B7E000`、暖黄 `#F5D800`、行动锈橙 `#C14701`；数值与英文标签统一等宽字体、中文标题用粗宋。
-- 每张棋子卡的卡面即该干员的立绘，取自 `assets/精二立绘/`（`_manifest.json` 为素材清单）。立绘映射表是 `index.html` 中的 `const ART={...}`，键为 `unit_cards.id`，共 56 条。
+- 界面采用移植适配后的 Stronghold-Protocol 视觉体系：近黑绿灰底、薄荷绿交互色、金色经济提示、括角按钮、雷达扫描与点阵徽记；保留本游戏的阵营配色、星级和机制图标。桌面宽屏使用左侧敌我棋盘、右侧商店、底部备战区布局。
+- 每张棋子卡的卡面即该干员的立绘，取自 `assets/精二立绘/`（`_manifest.json` 为素材清单）。立绘映射表是 `index.html` 中的 `const ART={...}`，键为 `unit_cards.id`，覆盖当前全部棋子。
 - 卡面结构：立绘 + 左上阵营标签 + 右上六边形星级标 + 等宽 `ATK / HP` 数据条 + 中文名牌与生命条；金卡为暖金描边，技能卡不配立绘，走几何切分版式。
 - 稀有度统一按星级取色：I 灰、II 蓝、III 紫、IV 金、V 橙、VI 红，同时用于卡框、左侧色条与准星。
 - 皮肤源文件与注入/检查脚本存放在 `.workbuddy/tmp/`，改皮肤的流程见 `.workbuddy/tmp/README.md`。
+
+
+## Stronghold-Protocol 界面代码移植
+
+2026-10-08：`index.html` 的新增界面代码直接移植并适配自 [sganggs/Stronghold-Protocol](https://github.com/sganggs/Stronghold-Protocol)，上游版本 `c2a2ef778cf728ff29b953b9842b2a39b1e9cbea`。
+
+Copyright (C) 2026 Stronghold-Protocol contributors. GPL-3.0-or-later. 许可证全文：[docs/stronghold-LICENSE.txt](docs/stronghold-LICENSE.txt)。移植范围为 `public/css/theme.css` 的设计变量及括角框、`public/css/components.css` 的按钮、`public/css/screens/title.css` 的雷达与首页视觉、`public/js/screens/title.js` 的点阵徽记。修改包括像素尺寸适配、现有酒馆 DOM 与交互绑定、响应式商店/备战区、头像结算页面。
+
+移植代码及其修改遵循 GPL-3.0-or-later；分发包含该代码的衍生前端时应保留署名与许可证并提供对应源码。本次没有引入上游 Release 的图片、模型、音乐或字体；原有明日方舟素材仍归各自权利人，不适用代码许可证。
+
+
+## 背景音乐
+
+菜单（开始、图鉴、玩法说明）使用 Stronghold-Protocol `tools/assets/plan.mjs` 的 `lobby` 配置：`sys.ON_ACTIVITY_LOADED.act2autochess`，官方音频表别名指向 `act1autochess`；先播放 `m_sys_act1autochess_intro`，随后循环 `m_sys_act1autochess_loop`。教程、备战、战斗及结算共用其默认 `prep/combat` 曲目 `m_bat_act1autochess_loop`。
+
+文件位于 `assets/audio/`，沿用上游下载脚本的资源来源：
+`https://raw.githubusercontent.com/ArknightsAssets/ArknightsAssets2/voice/assets/dyn/audio/sound_beta_2/music/act1autochess/`。
+音频版权归明日方舟原权利人所有，不属于 GPL 代码授权范围，仅作本同人游戏的非商业使用。来源配置：https://github.com/sganggs/Stronghold-Protocol/blob/master/tools/assets/plan.mjs 。
+
+受浏览器自动播放规则限制，首次点击或按键后才播放；音乐按钮和音量滑块可随时控制（包括教程中），设置保存在浏览器本地。页面隐藏时暂停，同组场景切换不重播，不同组淡入淡出。

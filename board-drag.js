@@ -165,6 +165,7 @@ const normalUpgrade=upgradeShop;upgradeShop=async function(){
 $('#upgrade').onclick=()=>upgradeShop();
 function tutorialAllowed(event){
   if(!tutorial.active)return true;
+  if(event.target.closest('.music-control'))return true;
   if(event.target.closest('.tutorial-box'))return !tutorial.pending;
   if(tutorial.pending)return false;
   if(event.type==='contextmenu'||event.type==='dblclick')return false;

@@ -11,6 +11,43 @@ def unit(name, **extra):
     return dict(id=name, name=name, attack=1, max_hp=100, current_hp=100, **extra)
 
 
+class TheoreticalSummonTests(unittest.TestCase):
+    def test_theoretical_counts_with_limited_slots(self):
+        import copy
+        for kind in ['summon','summon_random_sea_monsters','summon_random_aegir','initiative']:
+            for spaces in [0,1,3]:
+                for amount in [1,2]:
+                    with self.subTest(kind=kind,spaces=spaces,amount=amount):
+                        token=server._aegir_game_attack.set({'left':0,'right':0})
+                        try:
+                            watcher=unit('Watcher',faction='阿戈尔',aegir_summon_game_attack=amount)
+                            source=unit('Source',faction='阿戈尔')
+                            team=[watcher]+[unit('Filler') for _ in range(6-spaces)]+[None]*spaces
+                            monster=unit('Monster',faction='阿戈尔',card_type='unit',sea_monster=True)
+                            events=[];effect={'type':'summon' if kind=='initiative' else kind,'count':3,'summon_id':'Monster'}
+                            with patch.object(server,'card_by_id',side_effect=lambda _:copy.deepcopy(monster)),patch.object(server,'cards',return_value=[monster]):
+                                if kind=='initiative':
+                                    source['initiative']=effect
+                                    server.resolve_one_precombat_effect('initiative',source,0,team,[],'left',events)
+                                else:server.trigger_legacy_effect(source,0,'left',team,[],events,effect)
+                            counts=[e for e in events if e.get('type')=='aegir_game_attack']
+                            self.assertEqual(len(counts),3)
+                            self.assertEqual(sum(e['amount'] for e in counts),3*amount)
+                            self.assertEqual(sum(e.get('type')=='summon' for e in events),spaces)
+                        finally:server._aegir_game_attack.reset(token)
+
+    def test_blocked_summons_require_aegir_and_living_watcher(self):
+        for faction in ['炎','阿戈尔']:
+            for dead in [False,True]:
+                watcher=unit('Watcher',aegir_summon_game_attack=1)
+                if dead:watcher['_death_confirmed']=True
+                events=[];token=server._aegir_game_attack.set({'left':0,'right':0})
+                try:
+                    server.count_blocked_aegir_summon(unit('Summon',faction=faction),'left',[watcher],events)
+                    self.assertEqual(sum(e.get('type')=='aegir_game_attack' for e in events),int(faction=='阿戈尔' and not dead))
+                finally:server._aegir_game_attack.reset(token)
+
+
 class BulletBatchTests(unittest.TestCase):
     def test_crownslayer_legacy_venom_after_bullet_kill(self):
         attacker=unit('Attacker');crown=unit('Crownslayer',venom=True,legacy={'type':'bullet_damage','damage':1,'hits':1,'target':'killer'})

@@ -548,6 +548,8 @@ def handle_unit_death(unit, unit_index, side, team, foes, events):
     trigger_death_feud(unit,unit_index,side,team,foes,events)
     revived=make_revived_unit(unit,team)
     revive_slot=summon_slot_for(team,unit_index) if revived else None
+    if revived and revive_slot is None:
+        count_blocked_aegir_summon(revived,side,team,events)
     if revived and revive_slot is not None:
         place_summon(revived,unit,unit_index,team)
         team[revive_slot]=revived
@@ -733,7 +735,7 @@ def resolve_one_precombat_effect(phase, unit, idx, team, foes, side, events):
     pending_deaths=[]
     if effect.get("type")=="summon":
         for _ in range(max(0,int(effect.get("count",1)))):
-            if not summon_unit_from_legacy(unit,idx,side,team,effect.get("summon_id"),events=events): break
+            summon_unit_from_legacy(unit,idx,side,team,effect.get("summon_id"),events=events)
     elif effect.get("type")=="leftmost_attack_bullet":
         # Keep zero/negative-HP targets until all Tin Man shots have finished.
         # Each shot prefers living enemies; only an empty living pool uses corpses.
@@ -824,6 +826,7 @@ def resolve_assimilation_initiative(unit, idx, team, foes, side, events):
         if not revived: continue
         revive_slot=victim_index if team[victim_index] is None else summon_slot_for(team,victim_index)
         if revive_slot is None:
+            count_blocked_aegir_summon(revived,side,team,events)
             events.append({"type":"revive_failed","side":side,"slot":victim_index+1,"from":victim["name"],"reason":"board_full_after_assimilation"})
             continue
         place_summon(revived,victim,victim_index,team)
@@ -937,6 +940,15 @@ def apply_aegir_game_attack(unit, side):
     unit["attack"]+=total-int(unit.get("aegir_attack_applied",0))
     unit["aegir_attack_applied"]=total
 
+def count_blocked_aegir_summon(unit, side, team, events):
+    """A full board still counts a theoretical Aegir summon for Thorns."""
+    if events is None or not belongs_to_faction(unit,"阿戈尔"): return
+    watchers=[u for u in team if u and u.get("current_hp",0)>0
+              and not u.get("_death_confirmed") and not u.get("_venom_destroyed")
+              and u.get("aegir_summon_game_attack")]
+    for source in watchers:
+        grant_aegir_game_attack(source,side,team,events,int(source["aegir_summon_game_attack"]))
+
 def trigger_sea_summon_buff(unit, slot, side, team, events):
     for effect in (_life_tower_effects.get() or {}).get(side,[]):
         amount=int(effect.get("amount",0))
@@ -963,10 +975,12 @@ def trigger_sea_summon_buff(unit, slot, side, team, events):
     events.append({"type":"team_buff","side":side,"slot":slot+1,"from":unit["name"],"to":unit["name"],"attack":unit["attack"],"max_hp":unit["max_hp"],"current_hp":unit["current_hp"],"source_effect":"summon_sync"})
 
 def summon_unit_from_legacy(source, source_index, side, team, summon_id, grant_revive=False, events=None, summon_golden=False):
-    slot=summon_slot_for(team,source_index)
-    if slot is None: return None
     unit=card_by_id(summon_id)
     if not unit: return None
+    slot=summon_slot_for(team,source_index)
+    if slot is None:
+        count_blocked_aegir_summon(unit,side,team,events)
+        return None
     if summon_golden:
         base_attack=int(unit.get("attack",0) or 0); base_hp=int(unit.get("max_hp",1) or 1)
         unit=apply_golden_unit(unit); unit["attack"]=base_attack*2; unit["max_hp"]=base_hp*2
@@ -1021,6 +1035,8 @@ def summon_and_gain_dominant(source, source_index, side, allies, events, count):
             summoned=copy.deepcopy(gained);summoned["summoned_by_phase"]=True;summoned["summoned_by_legacy"]=True;place_summon(summoned,source,source_index,allies);allies[slot]=summoned
             events.append({"type":"summon","side":side,"slot":slot+1,"from":source["name"],"from_slot":source_index+1,"unit":copy.deepcopy(summoned)})
             trigger_sea_summon_buff(summoned,slot,side,allies,events)
+        else:
+            count_blocked_aegir_summon(gained,side,allies,events)
         events.append({"type":"gain_card","side":side,"from":source["name"],"from_slot":source_index+1,"card":copy.deepcopy(gained),"card_id":gained["id"],"card_name":gained["name"],"source_effect":"legacy"})
 
 def finish_bullet_batch(side, team, events, start):
@@ -1042,19 +1058,19 @@ def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
         for _ in range(max(0,int(legacy.get("count",2)))):
             if not pool: break
             card=random.choice(pool)
-            if not summon_unit_from_legacy(unit,unit_index,side,allies,card["id"],events=events): break
+            summon_unit_from_legacy(unit,unit_index,side,allies,card["id"],events=events)
     elif legacy.get("type")=="summon_random_aegir":
         pool=[c for c in cards() if c.get("card_type")=="unit" and c.get("faction")=="阿戈尔" and c.get("id")!="Ulpianus"]
         for _ in range(max(0,int(legacy.get("count",2)))):
             if not pool: break
             summoned=summon_unit_from_legacy(unit,unit_index,side,allies,random.choice(pool)["id"],events=events)
-            if not summoned: break
+            if not summoned: continue
             ti,target=summoned;amount=int(legacy.get("amount",3))
             apply_unit_buff(target,amount,amount,unit_index=ti,side=side,events=events,source_effect="summon_buff",team=allies)
             events.append({"type":"team_buff","side":side,"slot":ti+1,"from":unit["name"],"to":target["name"],"attack":target["attack"],"max_hp":target["max_hp"],"current_hp":target["current_hp"],"source_effect":"summon_buff"})
     elif legacy.get("type")=="summon":
         for _ in range(max(0,int(legacy.get("count",1)))):
-            if not summon_unit_from_legacy(unit,unit_index,side,allies,legacy.get("summon_id"),events=events): break
+            summon_unit_from_legacy(unit,unit_index,side,allies,legacy.get("summon_id"),events=events)
     elif legacy.get("type")=="team_permanent_bloodbattle":
         targets=[(i,u) for i,u in enumerate(allies) if can_receive_buff(u)]
         for ti,target in targets:

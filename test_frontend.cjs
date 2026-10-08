@@ -272,4 +272,25 @@ function testLifeTowerExpiry(){
   s.round=4;ctx.expireLifeTower();assert.equal(u.attack,4);assert.equal(u.max_hp,7);assert.equal(u.life_tower_buffs,undefined);
   ctx.expireLifeTower();assert.equal(u.attack,4);
 }
-(async()=>{testPrepSummon();testPhantomExternalMechanisms();testHealthLockInheritance();testSummonVisualOrder();await testLifeTowerDropRoutes();testAegirGameBonus();testLifeTowerExpiry();await testComboPlaybackAndSeaKeywords();await testAnimation('bullet_batch',1);await testAnimation('w_barrage',3);await testAnimation('w_barrage',3,2);await testSelling();testGuard();for(const skip of [false,true]){await testBattleMerge(skip);await testBattleMerge(skip,1)}testTripleHints();testSaleOptions();testDeadUnitsStayHidden();testAssimilatedUnitsStayRemoved();await testPointerRelease();await testTutorialRules();await testTripleAnimationQueue();console.log('PASS: bullets, sales, guard, battle merge, triple hints and pointer release/cancel/blur')})().catch(e=>{console.error(e);process.exitCode=1});
+
+async function testBackgroundMusic(){
+  const listeners={},sources=[],gains=[],nodes={};let observe;
+  function node(){return {hidden:true,value:0,classList:{contains(){return this.owner.hidden}},handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(){}}}
+  for(const id of ['musicToggle','musicVolume','gameShell','startScreen','codexScene','helpScene']){nodes[id]=node();nodes[id].classList.owner=nodes[id]}
+  const param=()=>({value:0,cancelScheduledValues(){},setValueAtTime(v){this.value=v},linearRampToValueAtTime(v){this.value=v},setTargetAtTime(v){this.value=v}});
+  class Engine{constructor(){this.currentTime=0;this.destination={};this.state='running'}createGain(){const g={gain:param(),connect(){},disconnect(){}};gains.push(g);return g}createBufferSource(){const x={connect(){},disconnect(){},start(t){this.at=t},stop(){this.stopped=true}};sources.push(x);return x}decodeAudioData(){return Promise.resolve({duration:2})}resume(){this.state='running';return Promise.resolve()}suspend(){this.state='suspended';return Promise.resolve()}}
+  const document={hidden:false,getElementById:id=>nodes[id],addEventListener:(k,f)=>listeners[k]=f};
+  const ctx=vm.createContext({document,window:{AudioContext:Engine},localStorage:{getItem:()=>null,setItem(){}},MutationObserver:class{constructor(f){observe=f}observe(){}},fetch:async()=>({ok:true,arrayBuffer:async()=>new ArrayBuffer(1)}),console});
+  vm.runInContext(extract('function musicSceneKey(', '// End background music.'),ctx);
+  const settle=()=>new Promise(setImmediate);
+  listeners.pointerdown({target:{closest:()=>false}});await settle();assert.equal(sources.length,2);assert.equal(sources[1].loop,true);assert.equal(sources[1].at-sources[0].at,2);
+  observe();await settle();assert.equal(sources.length,2,'same menu music must not restart');
+  nodes.gameShell.hidden=false;observe();await settle();assert.equal(sources.length,3);assert(sources[0].stopped&&sources[1].stopped);
+  nodes.gameShell.hidden=true;observe();await settle();assert.equal(sources.length,5);assert(sources[2].stopped);
+  nodes.musicToggle.handlers.click();assert.equal(gains[0].gain.value,0);
+  nodes.musicToggle.handlers.click();await settle();assert.equal(gains[0].gain.value,.35);assert.equal(sources.length,5);
+  document.hidden=true;listeners.visibilitychange();document.hidden=false;listeners.visibilitychange();await settle();assert.equal(sources.length,5,'visibility must resume without duplicate music');
+  nodes.gameShell.hidden=false;observe();nodes.gameShell.hidden=true;observe();await settle();assert.equal(sources.length,5,'obsolete scene loading must not play');
+}
+
+(async()=>{await testBackgroundMusic();testPrepSummon();testPhantomExternalMechanisms();testHealthLockInheritance();testSummonVisualOrder();await testLifeTowerDropRoutes();testAegirGameBonus();testLifeTowerExpiry();await testComboPlaybackAndSeaKeywords();await testAnimation('bullet_batch',1);await testAnimation('w_barrage',3);await testAnimation('w_barrage',3,2);await testSelling();testGuard();for(const skip of [false,true]){await testBattleMerge(skip);await testBattleMerge(skip,1)}testTripleHints();testSaleOptions();testDeadUnitsStayHidden();testAssimilatedUnitsStayRemoved();await testPointerRelease();await testTutorialRules();await testTripleAnimationQueue();console.log('PASS: bullets, sales, guard, battle merge, triple hints and pointer release/cancel/blur')})().catch(e=>{console.error(e);process.exitCode=1});
