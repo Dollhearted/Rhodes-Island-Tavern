@@ -1,5 +1,96 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const html=fs.readFileSync('index.html','utf8');
+// The bot realm must boot alongside the real immutable frontend bindings.
+function testArenaAgentBoot(){
+  const ctx=vm.createContext({URLSearchParams,location:{search:'?arena-agent=test-ai'},s:{},window:{},
+    start(){},fight(){},startPrep(){},loadEnemy(){},draw(){},updateHud(){},upgradeShop(){},queueTripleAnimation(){},
+    captureTripleSources(){},animatePrepAssimilate(){},chooseThree(){},chooseBlessingStat(){}});
+  vm.runInContext("const log=()=>{};",ctx);
+  vm.runInContext(fs.readFileSync('arena.js','utf8'),ctx);
+  assert.equal(ctx.s.arenaPlayerId,'test-ai');
+  for(const method of ['init','step','submit','result','prepare'])assert.equal(typeof ctx.window.arenaAgent[method],'function');
+}
+testArenaAgentBoot();
+function testRecommendationGuidesAffectAI(){
+  const code=fs.readFileSync('arena.js','utf8');
+  const unit=(id,name)=>({id,name,card_type:'unit',attack:3,max_hp:3,stars:2,faction:'拉特兰'});
+  const chosen=unit('chosen','推荐卡'),bridge=unit('bridge','过渡卡'),other=unit('other','普通卡');
+  const ctx=vm.createContext({s:{cards:[chosen,bridge,other],board:[],bench:[],round:3,hp:50},
+    localStorage:{getItem:key=>key.endsWith('v1')?JSON.stringify({'拉特兰':{name:'自定义',core:['chosen'],transition:['bridge'],note:''}}):null,setItem(){}},
+    compact:a=>a.filter(Boolean),owned:()=>[],number:1,profiles:[[1,1,1,1]],hasMark:()=>false,canCompleteTriple:()=>false});
+  vm.runInContext(code.slice(code.indexOf('  const guideKey='),code.indexOf('  if(botId){')),ctx);
+  vm.runInContext('const trainingGuides=null;const weights=()=>[1,1,1,1,1,1];',ctx);
+  vm.runInContext(code.slice(code.indexOf('    let plan=null'),code.indexOf('    const bestIndex=')),ctx);
+  ctx.selectPlan();
+  assert(ctx.score(chosen)>ctx.score(bridge));assert(ctx.score(bridge)>ctx.score(other));
+  assert.equal(ctx.readGuides()[0].name,'自定义');
+}
+testRecommendationGuidesAffectAI();
+function testMultipleGuidesMigration(){
+  const code=fs.readFileSync('arena.js','utf8');
+  const old={'拉特兰':{name:'我的打法',core:['a'],transition:['b'],note:'原始说明'},'中立':{name:'混搭一',core:['a'],transition:[],note:'保留一'},'任意':{name:'混搭二',core:['b'],transition:[],note:'保留二'}};
+  const storage=new Map([['autochess-lineups-v1',JSON.stringify(old)]]);
+  const ctx=vm.createContext({s:{cards:[{id:'a',name:'甲'},{id:'b',name:'乙'}]},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)}});
+  vm.runInContext(code.slice(code.indexOf('  const guideKey='),code.indexOf('  if(botId){')),ctx);
+  let guides=ctx.readGuides();
+  assert.equal(guides[0].name,'我的打法');assert.equal(guides[0].note,'原始说明');
+  assert.deepEqual(Array.from(guides.filter(g=>g.faction==='其他'),g=>g.name),['混搭一','混搭二']);
+  assert(!guides.some(g=>['任意','中立'].includes(g.faction)));
+  assert.equal(storage.get('autochess-lineups-v1'),JSON.stringify(old));
+  const original=JSON.stringify(guides[0]);
+  ctx.owned=()=>[{id:'b'}];ctx.number=1;ctx.s.round=3;
+  vm.runInContext('const trainingGuides=null;const weights=()=>[1,1,1,1,1,1];',ctx);
+  vm.runInContext(code.slice(code.indexOf('    let plan=null'),code.indexOf('    function score(')),ctx);
+  ctx.selectPlan();assert.equal(vm.runInContext('plan.core[0]',ctx),'b');
+}
+testMultipleGuidesMigration();
+async function testLobbyHealthWaitsForPlayback(){
+  const code=fs.readFileSync('arena.js','utf8');
+  for(const finished of [false,true]){
+    const old={seats:[{id:'self',health:50},{id:'bot',health:40}],finished:false};
+    const next={seats:[{id:'bot',health:40},{id:'self',health:finished?-2:35}],finished};
+    let release,started;const playing=new Promise(r=>started=r),gate=new Promise(r=>release=r);
+    const paints=[],state={phase:'备战',board:[],hp:50,round:1};
+    const ctx=vm.createContext({s:state,arena:{lobby:old,agents:[]},tutorial:{active:false},playerId:'self',
+      document:{getElementById:()=>null,querySelector:selector=>selector.includes('h2')?{}:null,body:{classList:{add(){}}}},
+      compact:a=>a.filter(Boolean),cloneData:structuredClone,pad:a=>a,clearInterval(){},draw(){},finishAgents:async()=>{},stateForBattle:()=>({}),
+      api:async()=>({lobby:next,results:{self:{health:finished?-2:35,opponent_board:[],winner:'right',loss_damage:15}}}),
+      applyResult:async res=>{started();await gate;state.hp=res.health},paintLobby:()=>paints.push(ctx.arena.lobby),
+      log(){},results(){},newShop:async()=>{},startPrep:async()=>{},reportError:msg=>{throw Error(msg)},alert:msg=>{throw Error(msg)}});
+    vm.runInContext(code.slice(code.indexOf('  fight=async function(){'),code.indexOf("  $('#fight').onclick=")),ctx);
+    const pending=ctx.fight();await playing;
+    assert.equal(ctx.arena.lobby,old);assert.equal(state.hp,50);assert(paints.every(p=>p===old));
+    release();await pending;
+    assert.equal(ctx.arena.lobby,next);assert.equal(state.hp,finished?-2:35);assert.equal(paints.at(-1),next);
+  }
+}
+function testTrainingReward(){
+  const code=fs.readFileSync('train-ai.html','utf8'),ctx=vm.createContext({});
+  vm.runInContext(code.slice(code.indexOf('function reward('),code.indexOf('const owner=')),ctx);
+  const u=(id,n)=>({id,attack:n,max_hp:n}),guides=[{core:['a','b','b','c','d','e','f']}];
+  const base=ctx.reward([u('a',10)],guides,4);
+  assert(ctx.reward([u('a',20)],guides,4).score>base.score);
+  assert(ctx.reward([u('a',10),u('b',10)],guides,4).match>base.match);
+  assert.equal(ctx.reward([u('a',10),u('a',10)],guides,4).match,base.match);
+  assert(ctx.reward([u('a',10)],guides,1).score>base.score);
+  assert(ctx.mutate([.25,3,1,1,1,1]).every(v=>v>=.25&&v<=3));
+}
+testTrainingReward();
+async function testGuideApiOldServerMessage(){
+  const line=html.split(/\r?\n/).find(l=>l.startsWith('let api='));let status=404;
+  const ctx=vm.createContext({s:{},playerId:'test',fetch:async(url,options)=>{assert.equal(options.cache,'no-store');return {status,ok:status===200,text:async()=>status===404?'<!DOCTYPE HTML>':JSON.stringify({guides:[]})}}});
+  vm.runInContext(line+';globalThis.callApi=api;',ctx);
+  await assert.rejects(ctx.callApi('/api/guides'),/python server.py/);
+  status=200;assert.equal((await ctx.callApi('/api/guides')).guides.length,0);
+}
+function testLegacySourceCannotDamageReplacement(){
+  const summon={id:'CONFESS_47',current_hp:2,max_hp:2},enemy={current_hp:10};
+  const ctx=vm.createContext({s:{board:[summon],enemy:[enemy]},cacheBattleAnchors(){},cloneData:structuredClone});
+  loadFunctions(ctx,['eventUnit','applyBattleEventState']);
+  ctx.applyBattleEventState({damage:2,damage_type:'bullet',side:'left',from_slot:1,target_side:'right',to_slot:1,source_removed:true,attacker_hp:0,target_hp:8});
+  assert.equal(summon.current_hp,2);assert.equal(enemy.current_hp,8);
+}
+testLegacySourceCannotDamageReplacement();
 function extract(start,end){return html.slice(html.indexOf(start),html.indexOf(end,html.indexOf(start)))}
 async function testAnimation(kind,expected,volleys=1){
   let active=0,max=0,finished=0,launched=0;
@@ -82,11 +173,11 @@ function testSaleOptions(){
   assert.equal(options.length,3);assert.ok(options.every(x=>x.id!=='Hoederer'&&x.stars===4));
   for(const ids of [[],['A'],['A','A','B'],['A','A','B','C'],['A','B','C','D']]){
     s.enemy=ids.map(id=>u(id)).concat([u('Ines'),u('High',5)]);
-    const picks=ctx.enemyPickOptions(),unique=new Set(ids);
-    assert.equal(picks.length,ids.length?3:0);
+    const picks=ctx.enemyPickOptions(),unique=new Set([...ids,'High']);
+    assert.equal(picks.length,3);
     assert.ok(picks.every(x=>unique.has(x.id)));
     assert.equal(new Set(picks.map(x=>x.id)).size,Math.min(unique.size,3));
-    if(unique.size===1){picks[0].stars=99;assert.equal(picks[1].stars,4)}
+    if(unique.size===1){picks[0].stars=99;assert.equal(picks[1].stars,5)}
   }
 }
 function testDeadUnitsStayHidden(){
@@ -221,6 +312,17 @@ function testPhantomExternalMechanisms(){
   for(const key of ['lock_hp','revive','guard','shield'])assert.equal(ctx.hasMark(result,key),true);
   assert.equal(result.attack,13);assert.equal(result.id,'Gladiia');assert.equal(result.golden,true);
 }
+function testPoolOriginInheritance(){
+  const base={id:'A',attack:1,max_hp:2,mechanics:[]},phantom={id:'Phantom',attack:1,max_hp:2,mechanics:[]};
+  const ctx=vm.createContext({s:{cards:[base,phantom]},cloneData:structuredClone});
+  loadFunctions(ctx,['hasMark','setGuard','baseUnitById','applyGoldenOverrides','extraStatSum','applyAegirGameBonus','goldenCopy','transformUnitInto']);
+  const bought={...base,pool_tokens:['a']},other={...base,pool_tokens:['b']},wild={...phantom,pool_tokens:['phantom']};
+  assert.deepEqual(Array.from(ctx.goldenCopy(base,[bought,other,wild]).pool_tokens),['a','b']);
+  assert.deepEqual(Array.from(ctx.goldenCopy(base,[bought,base,base]).pool_tokens),['a']);
+  const muel={id:'Muelsyse',attack:6,max_hp:6,pool_tokens:['muel']};ctx.transformUnitInto(muel,base);
+  assert.equal(muel.pool_tokens.length,0);
+  assert.deepEqual(Array.from(ctx.goldenCopy(base,[bought,other,muel]).pool_tokens),['a','b']);
+}
 function testHealthLockInheritance(){
   const base={id:'Gladiia',card_type:'unit',faction:'阿戈尔',attack:5,max_hp:4,mechanics:[]};
   const ctx=vm.createContext({s:{cards:[base]},cloneData:structuredClone});
@@ -293,4 +395,87 @@ async function testBackgroundMusic(){
   nodes.gameShell.hidden=false;observe();nodes.gameShell.hidden=true;observe();await settle();assert.equal(sources.length,5,'obsolete scene loading must not play');
 }
 
-(async()=>{await testBackgroundMusic();testPrepSummon();testPhantomExternalMechanisms();testHealthLockInheritance();testSummonVisualOrder();await testLifeTowerDropRoutes();testAegirGameBonus();testLifeTowerExpiry();await testComboPlaybackAndSeaKeywords();await testAnimation('bullet_batch',1);await testAnimation('w_barrage',3);await testAnimation('w_barrage',3,2);await testSelling();testGuard();for(const skip of [false,true]){await testBattleMerge(skip);await testBattleMerge(skip,1)}testTripleHints();testSaleOptions();testDeadUnitsStayHidden();testAssimilatedUnitsStayRemoved();await testPointerRelease();await testTutorialRules();await testTripleAnimationQueue();console.log('PASS: bullets, sales, guard, battle merge, triple hints and pointer release/cancel/blur')})().catch(e=>{console.error(e);process.exitCode=1});
+
+async function testInlineDeployTarget(){
+  const source={name:'深巡',faction:'阿戈尔',card_type:'unit'},shop={name:'商店目标',faction:'阿戈尔',card_type:'unit'},other={name:'其他',faction:'炎',card_type:'unit'},any={name:'傀影',faction:'任意',card_type:'unit'};
+  let applied=0,painted=0,drawn=0;
+  const ctx=vm.createContext({s:{board:[source,other,any],shop:[shop,{card_type:'skill'}],phase:'备战',prepSeconds:10},window:{},compact:a=>a.filter(Boolean),log(){},paintDeployTargets(){painted++},draw(){drawn++},document:{querySelector:()=>null},applyClientBuff(){applied++},triggerClientBloodbattle:async()=>{},hasMark:(u,k)=>!!u[k],setGuard:(u,v)=>u.guard=v});
+  loadFunctions(ctx,['prepTargetPool','deployTargetOptions','openDeployTargetSelect']);
+  vm.runInContext(html.split(/\r?\n/).find(l=>l.startsWith('window.chooseDeployTarget=')),ctx);
+  const effect={type:'select_buff_lock_hp',faction:'阿戈尔',attack:3,max_hp:3};
+  ctx.openDeployTargetSelect(source,effect,2);assert.equal(ctx.s.deployTarget._options.length,3);assert(ctx.s.deployTarget._options.includes(shop));assert(!ctx.s.deployTarget._options.includes(other));
+  await ctx.window.chooseDeployTarget(99);assert(ctx.s.deployTarget);assert.equal(applied,0);
+  const index=ctx.s.deployTarget._options.indexOf(shop);await ctx.window.chooseDeployTarget(index);await ctx.window.chooseDeployTarget(index);
+  assert.equal(applied,2);assert(shop.lock_hp);assert.equal(shop.mechanics.filter(x=>x==='lock_hp').length,1);assert.equal(ctx.s.deployTarget,null);assert.equal(ctx.s.deployTargetResolving,false);assert.equal(drawn,1);assert(painted>=2);
+  const friendly=ctx.deployTargetOptions(source,{type:'select_buff_bloodbattle'});assert(!friendly.includes(shop));assert(friendly.includes(other));
+  assert(!ctx.deployTargetOptions(source,{...effect,exclude_self:true}).includes(source));
+  ctx.openDeployTargetSelect(source,effect,1);ctx.s.shop=[];await ctx.window.chooseDeployTarget(ctx.s.deployTarget._options.indexOf(shop));assert.equal(applied,2,'removed targets must not receive buffs');
+  loadFunctions(ctx,['tickPrep']);ctx.tickPrep();assert.equal(ctx.s.prepSeconds,10,'target selection pauses prep timer');
+}
+
+
+async function testBlockAnimationAndKjeragUI(){
+  for(const side of ['left','right'])for(const reject of [false,true])for(const blocking of [false,true]){
+    const motions=[],ghosts=[];
+    const node=rect=>({style:{},classList:{add(){}},getBoundingClientRect:()=>rect,cloneNode(){const g={style:{},classList:{add(){}},animate(frames){motions.push(frames);return {finished:reject?Promise.reject(Error('cancelled')):Promise.resolve()}},remove(){this.removed=true}};ghosts.push(g);return g}});
+    const blocker=node({left:200,top:side==='left'?400:0,width:100,height:180}),attacker=node({left:0,top:side==='left'?0:400,width:100,height:180});
+    const ctx=vm.createContext({cardEl:zone=>zone===(side==='left'?'board':'enemy')?blocker:attacker,sleep:async()=>{},document:{body:{appendChild(){}},createElement:()=>({style:{},animate:()=>({finished:Promise.resolve()}),remove(){}})}});
+    vm.runInContext(extract('async function animateMelee(', 'async function animateCleave('),ctx);
+    await ctx.animateMelee({side,target_side:side==='left'?'right':'left',from_slot:1,to_slot:1},blocking);
+    assert.equal(ghosts.length,2);assert(ghosts.every(g=>g.removed));assert.equal(blocker.style.visibility,'');assert.equal(attacker.style.visibility,'');
+    if(blocking){
+      assert(motions[0][2].transform.startsWith('translate(0px,'),'blocker moves straight forward');
+      assert(motions[1][2].transform.startsWith('translate(200px,'),'incoming attacker meets blocker in its lane');
+    }else{
+      const contact=motions[0][2].transform.match(/translate\(([-.\d]+)px,([-.\d]+)px/);
+      assert(Math.abs(Number(contact[2]))>200,'attacker reaches target instead of stopping halfway');
+      assert.equal(motions[0][2].transform,motions[0][3].transform,'contact includes hit-stop');
+      assert.notEqual(motions[1][3].transform,motions[1][4].transform,'target recoils after impact');
+    }
+  }
+  const token={id:'Mountain Snowdevil',card_type:'unit',cannot_gain:true},normal={id:'Courier',card_type:'unit'};
+  const ctx=vm.createContext({s:{enemy:[token,normal]},compact:a=>a.filter(Boolean),baseUnitById:()=>null,shuffle:a=>a,cloneData:x=>({...x}),esc:x=>x});
+  loadFunctions(ctx,['enemyPickOptions','counterInfo','renderDesc']);
+  assert(ctx.enemyPickOptions().every(c=>c.id==='Courier'));
+  assert(ctx.counterInfo({charge:{threshold:4},charge_count:3}).includes('3/4'));
+  const desc=ctx.renderDesc('山雪鬼；阻挡；冲阵(4)');for(const cls of ['kw-snowdevil','kw-block','kw-charge'])assert(desc.includes(cls));
+}
+
+function testComboAndConsumedVenomBadges(){
+  const a={venom:true,mechanics:['venom']},b={venom:true,mechanics:['venom']};
+  const ctx=vm.createContext({cacheBattleAnchors(){},eventUnit:side=>side==='left'?a:b});
+  loadFunctions(ctx,['hasMark','badgeHtml','applyBattleEventState']);
+  assert(ctx.badgeHtml(a).includes('badge venom'));
+  ctx.applyBattleEventState({side:'left',from_slot:1,target_side:'right',to_slot:1,target_venom_triggered:true,attacker_venom_triggered:true,type:'test'});
+  assert(!ctx.badgeHtml(a).includes('badge venom'));assert(!ctx.badgeHtml(b).includes('badge venom'));
+  a.venom_consumed=false;ctx.applyBattleEventState({type:'test',side:'left',from_slot:1,venom_triggered:true});assert(!ctx.hasMark(a,'venom'));
+  ctx.applyBattleEventState({type:'grant_combo',side:'left',slot:1});ctx.applyBattleEventState({type:'grant_combo',side:'left',slot:1});
+  assert(ctx.badgeHtml(a).includes('<svg'));assert.equal(a.mechanics.filter(m=>m==='combo').length,1);
+}
+
+async function testSnowVanguardAndCliffheart(){
+  const card={id:'snow_vanguard_3',name:'雪境先驱.3',effect:'snow_vanguard',card_type:'skill',effect_value:2};
+  const gnosis={name:'灵知',recruit:{type:'gain_snow_vanguard',count:2},return_camp:{type:'gain_snow_vanguard',count:2}};
+  const state={shopLevel:3,round:4,cards:[card],bench:Array(12).fill(null),board:[gnosis],shop:[]};let supports=0;
+  const ctx=vm.createContext({s:state,emptyBench:()=>state.bench.findIndex(c=>!c),cloneData:c=>JSON.parse(JSON.stringify(c)),compact:a=>a.filter(Boolean),log(){},draw(){},triggerPlayerSupports(){supports++}});
+  loadFunctions(ctx,['grantSnowVanguard','triggerRecruit','resolveReturnCampEffects','useBenchSkill','expireSnowVanguard']);
+  ctx.triggerRecruit(gnosis);await ctx.resolveReturnCampEffects();assert.equal(state.bench.filter(Boolean).length,4);
+  await ctx.useBenchSkill(0,true);await ctx.useBenchSkill(1,true);assert.equal(state.snowVanguardEffects.length,2);assert.equal(supports,2);
+  ctx.expireSnowVanguard();assert.equal(state.snowVanguardEffects.length,2);state.round++;ctx.expireSnowVanguard();assert.equal(state.snowVanguardEffects.length,0);
+  state.board=[{name:'崖心',faction:'谢拉格',card_type:'unit'},{name:'傀影',faction:'任意',card_type:'unit'},{name:'非谢拉格',faction:'炎',card_type:'unit'}];state.shop=[{name:'商店',faction:'谢拉格',card_type:'unit'}];
+  Object.assign(ctx,{window:{},document:{querySelector:()=>null},paintDeployTargets(){},applyClientBuff(u,a,h){u.attack=(u.attack||0)+a;u.max_hp=(u.max_hp||0)+h}});
+  loadFunctions(ctx,['prepTargetPool','deployTargetOptions','openDeployTargetSelect']);vm.runInContext(html.split(/\r?\n/).find(l=>l.startsWith('window.chooseDeployTarget=')),ctx);
+  const effect={type:'select_buff_combo',faction:'谢拉格',attack:3,max_hp:3},source=state.board[0];
+  assert.equal(ctx.deployTargetOptions(source,effect).length,3);ctx.openDeployTargetSelect(source,effect,2);
+  await ctx.window.chooseDeployTarget(state.deployTarget._options.indexOf(state.shop[0]));assert(state.shop[0].combo);assert.equal(state.shop[0].attack,6);assert.equal(state.shop[0].mechanics.filter(m=>m==='combo').length,1);
+}
+function testOffboardEventSlots(){
+  const state={board:Array(7).fill(null),enemy:Array(7).fill(null)};
+  const ctx=vm.createContext({s:state,cacheBattleAnchors(){},cloneData:x=>({...x})});loadFunctions(ctx,['eventUnit','applyBattleEventState']);
+  ctx.applyBattleEventState({type:'offboard_summon',side:'left',slot:8,from_slot:1,unit:{name:'山雪鬼',current_hp:1}});
+  assert.equal(state.board.length,7);assert(state.board.every(u=>u===null));assert.equal(ctx.eventUnit('left',8).name,'山雪鬼');
+  ctx.applyBattleEventState({type:'permanent_buff',side:'left',slot:8,attack:4,max_hp:3,current_hp:3});assert.equal(ctx.eventUnit('left',8).attack,4);
+  ctx.applyBattleEventState({type:'offboard_leave',side:'left',slot:8});assert.equal(ctx.eventUnit('left',8),undefined);
+}
+
+(async()=>{await testGuideApiOldServerMessage();await testLobbyHealthWaitsForPlayback();await testSnowVanguardAndCliffheart();testOffboardEventSlots();testComboAndConsumedVenomBadges();await testBlockAnimationAndKjeragUI();testPoolOriginInheritance();await testInlineDeployTarget();await testBackgroundMusic();testPrepSummon();testPhantomExternalMechanisms();testHealthLockInheritance();testSummonVisualOrder();await testLifeTowerDropRoutes();testAegirGameBonus();testLifeTowerExpiry();await testComboPlaybackAndSeaKeywords();await testAnimation('bullet_batch',1);await testAnimation('w_barrage',3);await testAnimation('w_barrage',3,2);await testSelling();testGuard();for(const skip of [false,true]){await testBattleMerge(skip);await testBattleMerge(skip,1)}testTripleHints();testSaleOptions();testDeadUnitsStayHidden();testAssimilatedUnitsStayRemoved();await testPointerRelease();await testTutorialRules();await testTripleAnimationQueue();console.log('PASS: bullets, sales, guard, battle merge, triple hints and pointer release/cancel/blur')})().catch(e=>{console.error(e);process.exitCode=1});

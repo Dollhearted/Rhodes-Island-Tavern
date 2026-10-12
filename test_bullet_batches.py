@@ -48,6 +48,314 @@ class TheoreticalSummonTests(unittest.TestCase):
                 finally:server._aegir_game_attack.reset(token)
 
 
+
+class KjeragMechanicsTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.tmp=tempfile.TemporaryDirectory()
+        self.db_patch=patch.object(server,'DB_PATH',Path(self.tmp.name)/'kjerag.sqlite')
+        self.db_patch.start();server.initialise_database()
+        self.addCleanup(self.tmp.cleanup);self.addCleanup(self.db_patch.stop)
+
+    def test_snowdevil_raid_frees_only_slot_before_next_summon(self):
+        for counter,expected in [(1,2),(0,1)]:
+            courier=server.apply_golden_unit(server.card_by_id('Courier'))
+            team=[None]+[unit('Filler') for _ in range(6)]
+            enemy=unit('Enemy');enemy['attack']=counter;events=[]
+            server.trigger_legacy_effect(courier,0,'left',team,[enemy],events,courier['legacy'])
+            sequence=[e.get('type') or e.get('damage_type') for e in events if e.get('type') in ('summon','death') or e.get('damage_type')=='collision']
+            self.assertEqual(sequence,['summon','collision','death','summon','collision','death'] if counter else ['summon','collision'])
+            self.assertEqual(sum(e.get('type')=='summon' for e in events),expected)
+            self.assertEqual(team[0] is None,bool(counter))
+
+    def test_raid_cumulative_health_gain_can_save_snowdevil(self):
+        courier=server.apply_golden_unit(server.card_by_id('Courier'))
+        mostima=server.card_by_id('Mostima');mostima['current_hp']=mostima['max_hp'];mostima['mostima_damage_count']=1
+        team=[None,mostima]+[unit('Filler') for _ in range(5)];enemy=unit('Enemy');events=[]
+        server.trigger_legacy_effect(courier,0,'left',team,[enemy],events,courier['legacy'])
+        self.assertEqual(sum(e.get('type')=='summon' for e in events),1)
+        self.assertIsNotNone(team[0]);self.assertGreater(team[0]['current_hp'],0)
+        self.assertFalse(any(e.get('type')=='death' and e.get('from')=='山雪鬼' for e in events))
+
+    def test_aurora_raid_death_legacy_chain_before_next_courier(self):
+        token=server._waiting_summons.set([]);self.addCleanup(server._waiting_summons.reset,token)
+        aurora=server.apply_golden_unit(server.card_by_id('Aurora'));aurora['current_hp']=aurora['max_hp']
+        team=[aurora]+[unit('Filler') for _ in range(5)]+[None]
+        enemy=unit('Enemy');events=[]
+        server.resolve_one_precombat_effect('initiative',aurora,0,team,[enemy],'left',events)
+        sequence=[(e.get('type') or e.get('damage_type'),e.get('unit',{}).get('id') or e.get('from')) for e in events if e.get('type') in ('summon','death') or e.get('damage_type')=='collision']
+        cycle=[('summon','Courier'),('collision','讯使'),('death','讯使'),('summon','Mountain Snowdevil'),('collision','山雪鬼'),('death','山雪鬼')]
+        self.assertEqual(sequence,cycle*2)
+        self.assertIsNone(team[6]);self.assertFalse(server._waiting_summons.get())
+        self.assertTrue(aurora['guard'])
+
+    def test_aurora_full_board_waits_and_remaining_summon_survives(self):
+        token=server._waiting_summons.set([]);self.addCleanup(server._waiting_summons.reset,token)
+        aurora=server.apply_golden_unit(server.card_by_id('Aurora'));aurora['current_hp']=aurora['max_hp']
+        team=[aurora]+[unit('Filler') for _ in range(6)];enemy=unit('Enemy');enemy['attack']=0;events=[]
+        server.resolve_one_precombat_effect('initiative',aurora,0,team,[enemy],'left',events)
+        self.assertFalse(any(e.get('type')=='summon' for e in events))
+        team[6]['current_hp']=0
+        # The atomic effect boundary completes the existing death before draining the queue.
+        server.perform_attack_action(team[1],1,'left',team,[enemy],events)
+        # A pre-existing zero-HP card is not automatically a confirmed death.
+        self.assertFalse(any(e.get('type')=='summon' for e in events))
+        team[6]=None
+        server.drain_waiting_summons(events)
+        self.assertEqual(sum(e.get('type')=='summon' for e in events),1)
+        self.assertEqual(team[6]['id'],'Courier');self.assertEqual(team[6]['raid']['hits'],1)
+        self.assertEqual(server._waiting_summons.get()[0]['count'],1)
+        team[5]['current_hp']=1;enemy['attack']=1
+        with patch.object(server,'choose_target',side_effect=lambda foes:(5,team[5]) if foes is team else (0,enemy)):
+            server.perform_attack_action(enemy,0,'right',[enemy],team,events)
+        self.assertFalse(server._waiting_summons.get())
+        self.assertEqual(sum(e.get('type')=='summon' and e['unit']['id']=='Courier' for e in events),2)
+
+    def test_matterhorn_steward_before_attack_and_permanence(self):
+        for golden in (False,True):
+            attacker=server.card_by_id('Matterhorn');steward=server.card_by_id('Steward')
+            if golden:attacker=server.apply_golden_unit(attacker);steward=server.apply_golden_unit(steward)
+            attacker['current_hp']=attacker['max_hp'];steward['current_hp']=steward['max_hp']
+            base=(attacker['attack'],attacker['max_hp']);events=[];team=[attacker,steward]
+            server.apply_before_attack(attacker,0,'left',team,events)
+            factor=2 if golden else 1
+            self.assertEqual((attacker['attack'],attacker['max_hp']),(base[0]+3*factor,base[1]+factor))
+            import copy
+            saved=copy.deepcopy(team);saved[0]['attack'],saved[0]['max_hp']=base
+            server.apply_persistent_battle_gains(saved,events)
+            self.assertEqual((saved[0]['attack'],saved[0]['max_hp']),(attacker['attack'],attacker['max_hp']))
+            steward['current_hp']=0;before=attacker['attack'];hp=attacker['max_hp']
+            server.apply_before_attack(attacker,0,'left',team,[])
+            self.assertEqual(attacker['attack'],before+factor);self.assertEqual(attacker['max_hp'],hp)
+
+    def test_snow_hunter_neighbors_and_raid_not_combo(self):
+        for golden in (False,True):
+            hunter=server.card_by_id('Snow Hunter')
+            if golden:hunter=server.apply_golden_unit(hunter)
+            hunter['current_hp']=hunter['max_hp'];left=unit('Left');right=unit('Right')
+            team=[left,None,hunter,right];enemy=unit('Enemy');enemy['attack']=0;events=[]
+            server.resolve_one_precombat_effect('initiative',hunter,2,team,[enemy],'left',events)
+            server.resolve_one_precombat_effect('initiative',hunter,2,team,[enemy],'left',events)
+            self.assertTrue(left['combo']);self.assertEqual(bool(right.get('combo')),golden)
+            self.assertEqual(left['mechanics'].count('combo'),1)
+            self.assertTrue(hunter['shield'] and hunter['combo'])
+            events=[];server.perform_attack_action(left,0,'left',team,[enemy],events,source_effect='raid')
+            self.assertEqual(sum(e.get('damage_type')=='collision' for e in events),1)
+            events=[];server.perform_attack_action(left,0,'left',team,[enemy],events)
+            self.assertEqual(sum(e.get('damage_type')=='collision' for e in events),2)
+
+    def test_silverash_offboard_attacks_same_target_and_leaves(self):
+        for golden in (False,True):
+            for hp,count in [(100,2 if golden else 1),(1,1)]:
+                silver=server.card_by_id('SilverAsh')
+                if golden:silver=server.apply_golden_unit(silver)
+                silver['current_hp']=silver['max_hp'];team=[silver]+[unit('Filler') for _ in range(6)];original=list(team)
+                target=unit('Target');target['attack']=0;target['current_hp']=target['max_hp']=hp;events=[]
+                def verify_space(*args):self.assertIsNone(server.summon_slot_for(team,0))
+                with patch.object(server,'trigger_sea_summon_buff',side_effect=verify_space):
+                    server.perform_attack_action(silver,0,'left',team,[target],events)
+                summons=[e for e in events if e.get('type')=='offboard_summon']
+                self.assertEqual(len(summons),count);self.assertTrue(all(e['slot']>7 for e in summons))
+                self.assertEqual(sum(e.get('type')=='offboard_leave' for e in events),count)
+                self.assertEqual(len(team),7);self.assertTrue(all(a is b for a,b in zip(team,original)))
+                hits=[e for e in events if e.get('damage_type')=='collision']
+                self.assertTrue(all(e['to']=='Target' for e in hits))
+                self.assertEqual(len(hits),count+(hp>1))
+
+    def test_pramanix_charge_growth_and_snow_vanguard(self):
+        for golden in (False,True):
+            p=server.card_by_id('Pramanix')
+            if golden:p=server.apply_golden_unit(p)
+            p['current_hp']=p['max_hp'];base=(p['attack'],p['max_hp']);events=[]
+            server.record_charge_attack('left',[p],events);server.record_charge_attack('left',[p],events)
+            amount=4 if golden else 2
+            self.assertEqual((p['attack'],p['max_hp']),(base[0]+amount,base[1]+amount))
+            self.assertFalse(any(e.get('type')=='gain_card' for e in events))
+        silver=server.card_by_id('SilverAsh');silver['current_hp']=silver['max_hp'];enemy=unit('Enemy');enemy['attack']=0
+        token=server._snow_vanguard.set({'left':[2,1],'right':[]});self.addCleanup(server._snow_vanguard.reset,token)
+        events=[];team=[silver]+[None]*6;server.perform_attack_action(silver,0,'left',team,[enemy],events)
+        gains=[e for e in events if e.get('from')=='雪境先驱' and e.get('type')=='permanent_buff']
+        self.assertEqual(len(gains),4) # two separate cards on SilverAsh and his temporary summon
+        self.assertEqual(silver['attack'],5)
+        self.assertTrue(any(e['slot']>7 for e in gains))
+        snapshot=[server.card_by_id('SilverAsh')]+[None]*6;server.apply_persistent_battle_gains(snapshot,events)
+        self.assertEqual(snapshot[0]['attack'],5)
+
+    def test_kjera_summon_sequence_and_new_card_templates(self):
+        for golden,count in [(False,3),(True,6)]:
+            k=server.card_by_id('Kjera')
+            if golden:k=server.apply_golden_unit(k)
+            for damage,expected in [(0,1),(1,count)]:
+                enemy=unit('Enemy');enemy['attack']=damage;team=[None]+[unit('Filler') for _ in range(6)];events=[]
+                server.trigger_legacy_effect(k,0,'left',team,[enemy],events,k['legacy'])
+                self.assertEqual(sum(e.get('type')=='summon' for e in events),expected)
+        for level,value in enumerate([1,2,2,3,3,4],1):
+            card=server.card_by_id('snow_vanguard_'+str(level));self.assertEqual(card['effect_value'],value)
+            self.assertIn('+'+str(value)+'/+'+str(value),card['description'])
+        cliff=server.card_by_id('Cliffheart');self.assertEqual(cliff['on_deploy']['attack'],3)
+        self.assertEqual(server.apply_golden_unit(cliff)['on_deploy']['attack'],6)
+        gnosis=server.apply_golden_unit(server.card_by_id('Gnosis'))
+        self.assertEqual(gnosis['recruit']['count'],2);self.assertEqual(gnosis['return_camp']['count'],2)
+
+    def test_degenbrecher_shield_limit_and_growth(self):
+        for golden,limit,growth in [(False,1,1),(True,2,2)]:
+            d=server.card_by_id('Degenbrecher')
+            if golden:d=server.apply_golden_unit(d)
+            d['current_hp']=d['max_hp'];base=(d['attack'],d['max_hp']);events=[]
+            for turn in range(4):
+                server.apply_before_attack(d,0,'left',[d],events)
+                self.assertEqual(server.consume_shield(d),turn<limit)
+            self.assertEqual(d['before_attack_shield_count'],limit)
+            self.assertEqual((d['attack'],d['max_hp']),(base[0]+growth*4,base[1]+growth*4))
+            d['before_attack_shield_count']=99
+            enemy=unit('Enemy');enemy['attack']=0;enemy['max_hp']=enemy['current_hp']=1
+            result=server.tavern_battle([d],[enemy])
+            self.assertTrue(any(e.get('type')=='grant_shield' for e in result['events']))
+
+    def test_prerita_faction_growth_has_separate_buff_events(self):
+        for golden,factor in [(False,1),(True,2)]:
+            p=server.card_by_id('Pramanix the Prerita')
+            if golden:p=server.apply_golden_unit(p)
+            p['current_hp']=p['max_hp'];k=unit('K',faction='谢拉格');wild=unit('Wild',faction='任意');other=unit('Other',faction='炎');team=[p,k,wild,other];events=[]
+            server.record_charge_attack('left',team,events);server.record_charge_attack('left',team,events)
+            for u,amount in [(k,4),(wild,4),(other,3)]:self.assertEqual(u['attack'],1+amount*factor)
+            gains=[e for e in events if e.get('type')=='permanent_buff']
+            self.assertEqual([e['attack_gain'] for e in gains if e['to']=='K'],[3*factor,1*factor])
+            self.assertEqual(len(gains),7)
+
+    def test_truesilver_inherits_buffed_attack_and_credits_owner(self):
+        for golden in (False,True):
+            source=server.card_by_id('SilverAsh the Reignfrost')
+            if golden:source=server.apply_golden_unit(source)
+            source['current_hp']=source['max_hp'];source['bloodbattle']=3;base=source['attack']
+            team=[source]+[unit('Filler') for _ in range(6)];enemy=unit('Target');enemy['attack']=0;events=[]
+            token=server._snow_vanguard.set({'left':[2],'right':[]})
+            try:server.perform_attack_action(source,0,'left',team,[enemy],events)
+            finally:server._snow_vanguard.reset(token)
+            summons=[e for e in events if e.get('type')=='offboard_summon'];self.assertEqual(len(summons),2 if golden else 1)
+            self.assertTrue(all(e['unit']['attack']==base+2 and e['unit']['max_hp']==7 for e in summons))
+            ghost_hits=[e for e in events if e.get('damage_type')=='collision' and e.get('from')=='真银斩']
+            self.assertTrue(all(e['damage']==base+4 for e in ghost_hits))
+            self.assertEqual(len(team),7)
+        source=server.apply_golden_unit(server.card_by_id('SilverAsh the Reignfrost'));source['current_hp']=source['max_hp'];source['bloodbattle']=3;base=source['attack'];enemy=unit('Target');enemy['attack']=0;enemy['current_hp']=1;events=[]
+        server.perform_attack_action(source,0,'left',[source]+[None]*6,[enemy],events)
+        self.assertEqual(source['attack'],base+3)
+        self.assertEqual(sum(e.get('type')=='offboard_summon' for e in events),1)
+        self.assertEqual([e['from'] for e in events if e.get('mechanic')=='bloodbattle'],['凛御银灰'])
+        slash=server.card_by_id('Truesilver Slash')
+        self.assertEqual((slash['tier'],slash['attack'],slash['max_hp']),(1,7,7))
+        self.assertTrue(slash['cannot_gain'] and slash['summon_only'])
+        with self.assertRaises(ValueError):server.buy_card(slash['id'],bypass_shop_level=True)
+
+    def test_aurora_summons_at_leftmost_free_slot_and_position(self):
+        token=server._waiting_summons.set([]);self.addCleanup(server._waiting_summons.reset,token)
+        aurora=server.card_by_id('Aurora');aurora['current_hp']=aurora['max_hp'];aurora['battle_position']=3
+        team=[unit('First',battle_position=0),None,None,aurora,None,None,None];enemy=unit('Enemy');enemy['attack']=0;events=[]
+        server.resolve_one_precombat_effect('initiative',aurora,3,team,[enemy],'left',events)
+        self.assertEqual(team[1]['id'],'Courier')
+        self.assertLess(team[1]['battle_position'],0)
+        self.assertEqual(next(u for _,u in server.battle_entries(team) if u)['id'],'Courier')
+
+    def test_kjera_does_not_inherit_summoned_snowdevil_growth(self):
+        import copy
+        k=server.card_by_id('Kjera');k['current_hp']=0;team=[k]+[None]*6;enemy=unit('Enemy');enemy['attack']=1;events=[]
+        saved=[copy.deepcopy(k)]+[None]*6
+        token=server._snow_vanguard.set({'left':[1],'right':[]})
+        try:server.handle_unit_death(k,0,'left',team,[enemy],events)
+        finally:server._snow_vanguard.reset(token)
+        self.assertTrue(any(e.get('type')=='permanent_buff' and e.get('to')=='山雪鬼' for e in events))
+        server.apply_persistent_battle_gains(saved,events)
+        self.assertEqual((saved[0]['attack'],saved[0]['max_hp']),(6,3))
+        self.assertTrue(all(u['attack']==3 for u in team if u))
+        # Gains earned by Kjera before death still persist, unlike later slot occupants.
+        before=dict(type='permanent_buff',side='left',slot=1,attack_gain=2,max_hp_gain=2)
+        saved=[copy.deepcopy(k)]+[None]*6
+        server.apply_persistent_battle_gains(saved,[before]+events)
+        self.assertEqual((saved[0]['attack'],saved[0]['max_hp']),(8,5))
+
+    def test_courier_summons_and_immediate_raid(self):
+        for golden,count in [(False,1),(True,2)]:
+            courier=server.card_by_id('Courier')
+            if golden:courier=server.apply_golden_unit(courier)
+            team=[None]*7;enemy=unit('Enemy');enemy['attack']=0;events=[]
+            server.trigger_legacy_effect(courier,0,'left',team,[enemy],events,courier['legacy'])
+            self.assertEqual(sum(e.get('type')=='summon' for e in events),count)
+            self.assertEqual(sum(e.get('source_effect')=='raid' and e.get('damage_type')=='collision' for e in events),count)
+            self.assertEqual(enemy['current_hp'],100-count*2)
+        ghost=server.card_by_id('Mountain Snowdevil')
+        self.assertEqual((ghost['tier'],ghost['attack'],ghost['max_hp']),(1,2,1))
+        self.assertEqual(server.apply_golden_unit(ghost)['raid']['hits'],2)
+        with self.assertRaises(ValueError):server.buy_card(ghost['id'])
+        watcher=unit('Catherine',enemy_death_copy_limit=2);events=[]
+        server.trigger_enemy_death_copy(ghost,'right',[watcher],events)
+        self.assertFalse(events);self.assertNotIn('enemy_death_copy_count',watcher)
+
+    def test_block_interrupts_cleave_and_runs_before_attack(self):
+        attacker=unit('Attacker',cleave=True,charge={'threshold':4})
+        blocker=server.card_by_id('Leto');blocker['current_hp']=blocker['max_hp'];blocker['charge']={'threshold':4}
+        original=unit('Original');left=[attacker,unit('L2'),unit('L3')];right=[unit('R1'),blocker,original];events=[]
+        with patch.object(server,'choose_target',return_value=(2,original)):
+            server.perform_attack_action(attacker,0,'left',left,right,events)
+        self.assertEqual(original['current_hp'],100)
+        self.assertEqual(blocker['attack'],2);self.assertEqual(blocker['max_hp'],8)
+        self.assertEqual(attacker['charge_count'],1);self.assertEqual(blocker['charge_count'],1)
+        self.assertFalse(any(e.get('damage_type')=='cleave' for e in events))
+        collision=next(e for e in events if e.get('damage_type')=='collision')
+        self.assertEqual((collision['from'],collision['to'],collision['source_effect']),('烈夏','Attacker','block'))
+        snapshot=[None,server.card_by_id('Leto'),None]
+        server.apply_persistent_battle_gains(snapshot,[dict(e,side='left') for e in events])
+        self.assertEqual((snapshot[1]['attack'],snapshot[1]['max_hp']),(2,8))
+
+    def test_blocker_bloodbattle_but_not_interrupted_counter(self):
+        for blocker_kills in [True,False]:
+            attacker=unit('Attacker',bloodbattle=5,cleave=True)
+            blocker=unit('Blocker',block=True,bloodbattle=2)
+            attacker['attack']=1 if blocker_kills else 9
+            attacker['current_hp']=1 if blocker_kills else 100
+            blocker['current_hp']=100 if blocker_kills else 1
+            target=unit('Target');left=[attacker,unit('L2'),unit('L3')];right=[unit('R1'),blocker,target];events=[]
+            with patch.object(server,'choose_target',return_value=(2,target)):
+                server.perform_attack_action(attacker,0,'left',left,right,events)
+            gains=[e for e in events if e.get('mechanic')=='bloodbattle']
+            self.assertEqual(len(gains),1 if blocker_kills else 0)
+            if gains:self.assertEqual(gains[0]['from'],'Blocker')
+
+    def test_block_geometry_uses_centered_order_and_not_slot_holes(self):
+        attacker=unit('A',battle_position=0);left=[None,attacker,None,unit('L',battle_position=2)]
+        blocker=unit('B',block=True,battle_position=1);target=unit('T',battle_position=2)
+        right=[target,None,blocker,unit('R',battle_position=0)]
+        self.assertEqual(server.crossing_blocker(attacker,left,target,right),(2,blocker))
+        self.assertIsNone(server.crossing_blocker(attacker,left,blocker,right))
+        blocker['current_hp']=0
+        self.assertIsNone(server.crossing_blocker(attacker,left,target,right))
+
+    def test_charge_ignores_bullets_and_counters_and_repeats(self):
+        harold=server.card_by_id('Harold');harold['current_hp']=harold['max_hp'];attacker=unit('A');enemy=unit('Enemy');enemy['attack']=0
+        left=[attacker,harold];events=[]
+        with patch.object(server,'cards',return_value=[server.card_by_id('Courier'),server.card_by_id('Mountain Snowdevil')]):
+            for _ in range(8):server.perform_attack_action(attacker,0,'left',left,[enemy],events)
+        gained=[e for e in events if e.get('source_effect')=='charge' and e.get('type')=='gain_card']
+        self.assertEqual(len(gained),2);self.assertTrue(all(e['card_id']=='Courier' for e in gained))
+        self.assertEqual(harold['charge_count'],0)
+        server.deal_bullet_damage(attacker,0,'left',left,[enemy],0,enemy,1,events)
+        server.perform_attack_action(enemy,0,'right',[enemy],left,events)
+        self.assertEqual(harold['charge_count'],0)
+        attacker['bullet_damage']=1;attacker['bullet_trigger']='always'
+        server.perform_attack_action(attacker,0,'left',left,[enemy],events)
+        self.assertEqual(harold['charge_count'],0)
+
+    def test_golden_charge_and_reset_each_battle(self):
+        harold=server.apply_golden_unit(server.card_by_id('Harold'));harold['current_hp']=harold['max_hp'];harold['charge_count']=3;events=[]
+        server.record_charge_attack('left',[harold],events)
+        self.assertEqual(sum(e.get('type')=='gain_card' for e in events),2)
+        harold['charge_count']=3;enemy=unit('Enemy');enemy['current_hp']=enemy['max_hp']=1;enemy['attack']=0
+        result=server.tavern_battle([harold],[enemy])
+        counters=[e for e in result['events'] if e.get('type')=='charge_counter']
+        self.assertEqual(counters[0]['count'],1)
+        self.assertFalse(any(e.get('type')=='gain_card' for e in result['events']))
+
+
 class BulletBatchTests(unittest.TestCase):
     def test_crownslayer_legacy_venom_after_bullet_kill(self):
         attacker=unit('Attacker');crown=unit('Crownslayer',venom=True,legacy={'type':'bullet_damage','damage':1,'hits':1,'target':'killer'})
@@ -237,6 +545,34 @@ class BulletBatchTests(unittest.TestCase):
         server.handle_unit_death(h,1,'left',team,[],events)
         server.resolve_bloodbattle(a,0,'left',team,[],events)
         self.assertEqual(a['attack'],3)
+
+    def test_logistics_bloodbattle_keeps_growth_without_bullets(self):
+        for golden in [False,True]:
+            amount=2 if golden else 1
+            horn=unit('Horn',bloodbattle={'type':'team_growth_shop_bullet','amount':amount,'multiplier':amount},battle_shop_level=4)
+            rock=unit('Rockrock',bloodbattle={'type':'leftmost_bullet_growth','damage':4,'growth':amount})
+            mint=unit('Mint',logistics={'type':'adjacent_buff','attack':2,'max_hp':2,'bloodbattle_triggers':2})
+            enemy=unit('Enemy',shield=True,lock_hp=True)
+            events=[];team=[horn,mint,rock]
+            server.apply_logistics_effects(team,'left',events,[enemy])
+            self.assertEqual(enemy['current_hp'],100)
+            self.assertTrue(enemy['shield']);self.assertTrue(enemy['lock_hp'])
+            self.assertFalse(any(e.get('damage_type')=='bullet' or e.get('type') in ['shield_block','cumulative_counter'] for e in events))
+            self.assertEqual(horn['attack'],3+2*amount)
+            self.assertEqual(rock['attack'],3+4*amount)
+            self.assertFalse(server._logistics_active.get())
+            enemy.pop('shield');enemy.pop('lock_hp');events=[]
+            server.resolve_bloodbattle(horn,0,'left',team,[enemy],events)
+            self.assertTrue(any(e.get('damage_type')=='bullet' for e in events))
+            self.assertLess(enemy['current_hp'],100)
+
+    def test_logistics_context_restored_after_failure(self):
+        @server.logistics_phase
+        def fail():
+            self.assertTrue(server._logistics_active.get())
+            raise ValueError('test')
+        with self.assertRaises(ValueError):fail()
+        self.assertFalse(server._logistics_active.get())
 
     def test_mint_adjacent_bloodbattle_repetitions(self):
         a=unit('A',bloodbattle=1);b=unit('B',bloodbattle=2);far=unit('Far',bloodbattle=9)

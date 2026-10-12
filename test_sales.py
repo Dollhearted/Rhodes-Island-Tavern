@@ -5,6 +5,55 @@ from unittest.mock import patch
 import server
 
 
+class PoolTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.dbpatch=patch.object(server,'DB_PATH',Path(self.temp.name)/'pool.sqlite');self.dbpatch.start();self.addCleanup(self.dbpatch.stop)
+        server.initialise_database()
+        with server.db() as con:con.execute("UPDATE players SET gold=1000,shop_level=6 WHERE id='local'")
+        self.card=next(c for c in server.cards() if c['card_type']=='unit' and not c.get('summon_only') and server.card_tier(c)==6)
+
+    def test_stock_exhaustion_returns_and_player_isolation(self):
+        receipts=[server.buy_card(self.card['id'])['card']['pool_tokens'][0] for _ in range(7)]
+        gold=server.player()['gold']
+        with self.assertRaises(ValueError):server.buy_card(self.card['id'])
+        self.assertEqual(server.player()['gold'],gold)
+        with patch.object(server,'cards',return_value=[self.card]):
+            self.assertEqual(server.shop(4),[None]*4)
+            server.sell_unit(self.card['id']) # gifted card, no receipt
+            self.assertEqual(server.shop(4),[None]*4)
+            server.ensure_player('other');server.sell_unit(self.card['id'],'other',pool_tokens=receipts)
+            self.assertEqual(server.shop(4),[None]*4)
+            server.sell_unit(self.card['id'],pool_tokens=[receipts[0]]*3)
+            self.assertEqual(sum(c is not None for c in server.shop(4)),1)
+            server.sell_unit(self.card['id'],pool_tokens=[receipts[0]])
+            self.assertEqual(sum(c is not None for c in server.shop(4)),1)
+            server.sell_unit(self.card['id'],pool_tokens=receipts[1:3])
+            self.assertEqual(sum(c is not None for c in server.shop(4)),3)
+        server.reset_player()
+        with server.db() as con:self.assertEqual(con.execute('SELECT COUNT(*) FROM shop_purchases').fetchone()[0],0)
+
+    def test_exact_star_probabilities(self):
+        rows=[(100,),(45,55),(28,34,38),(19,23,26,32),(14,17,19,24,26),(12,15,16,21,22,14)]
+        for level,weights in enumerate(rows,1):
+            with server.db() as con:con.execute('UPDATE players SET shop_level=?',(level,))
+            seen=[]
+            def choose(population,weights,k):
+                seen.append(tuple(weights));return [population[0]]
+            with patch.object(server.random,'choices',side_effect=choose):server.shop(1)
+            self.assertEqual(seen[0],weights)
+        self.assertEqual(server.POOL_COPIES,{1:22,2:19,3:16,4:13,5:10,6:7})
+
+    def test_concurrent_last_copy(self):
+        from concurrent.futures import ThreadPoolExecutor
+        for _ in range(6):server.buy_card(self.card['id'])
+        def buy():
+            try:server.buy_card(self.card['id']);return True
+            except ValueError:return False
+        with ThreadPoolExecutor(max_workers=2) as workers:results=list(workers.map(lambda _:buy(),range(2)))
+        self.assertEqual(sum(results),1)
+
+
 class SaleTests(unittest.TestCase):
     def test_life_tower_applies_to_all_new_summons(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -166,7 +215,7 @@ class SaleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(server,'DB_PATH',Path(directory)/'tokens.sqlite'):
                 server.initialise_database()
-                tokens=[c for c in server.cards() if c.get('summon_only')]
+                tokens=[c for c in server.cards() if c.get('sea_monster')]
                 self.assertEqual(len(tokens),4)
                 self.assertEqual(sorted((c['attack'],c['max_hp']) for c in tokens),[(1,1),(1,1),(4,4),(5,5)])
                 for c in tokens:

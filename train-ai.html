@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>八人 AI 自对弈训练</title>
+<style>body{background:#101e18;color:#def5e9;font:16px system-ui;max-width:1000px;margin:40px auto;padding:20px}button,input{font:inherit;padding:10px;margin:5px;background:#244536;color:inherit;border:1px solid #70ad8d}input{width:80px}pre{white-space:pre-wrap;background:#08110d;padding:20px;max-height:60vh;overflow:auto}a{color:#8debc0}</style>
+<h1>八人 AI 自对弈训练</h1>
+<p>八个独立玩家共享卡池，复用游戏经营、技能和战斗规则。每代保留上一代优胜参数，再生成七组变体进行比较；多局轮换座位，直到决出最后一名胜者。请保持本页打开。</p>
+<p>评分：推荐阵容匹配 45% + 阵容攻血总和 35% + 最终名次 20%。匹配按重复数量计算；数值使用对数，避免单次极端成长压倒其他目标。使用服务器共享的推荐阵容。</p>
+<label>训练代数<input id="generations" type="number" min="1" max="1000" value="10"></label>
+<label>每代局数<input id="games" type="number" min="1" max="100" value="3"></label>
+<button id="run">开始 / 继续训练</button><button id="stop" disabled>本回合后停止</button>
+<button id="apply" disabled>应用优胜参数到游戏</button><button id="export" disabled>导出训练记录</button>
+<p>结果自动保存在服务器；点击应用后，所有浏览器中新开始的游戏 AI 使用该参数。训练不会覆盖推荐阵容或当前玩家存档。参数搜索不保证每代实际胜率提升，建议多局训练后验证。</p>
+<a href="/">返回游戏</a><pre id="out" role="status">等待开始。</pre>
+<script>
+'use strict';
+const $=id=>document.getElementById(id),key='autochess-training-v1';
+let stopped=false,running=false,checkpoint=null,frames=[],revision=0;
+
+function show(text){$('out').textContent=text}
+function reward(board,guides,rank){
+  const units=board.filter(Boolean),counts=new Map();for(const u of units)counts.set(u.id,(counts.get(u.id)||0)+1);
+  const match=Math.max(0,...guides.filter(g=>g.core.length).map(g=>{const remaining=new Map(counts);let n=0;for(const id of g.core){if(remaining.get(id)>0){n++;remaining.set(id,remaining.get(id)-1)}}return n/Math.max(7,g.core.length)}));
+  const total=units.reduce((n,u)=>n+Math.max(0,Number(u.attack)||0)+Math.max(0,Number(u.max_hp)||0),0);
+  const stats=Math.log1p(total)/(Math.log1p(total)+Math.log(301));
+  return {score:45*match+35*stats+20*(8-rank)/7,match,total,rank};
+}
+function mutate(weights){return weights.map(v=>Math.max(.25,Math.min(3,v*Math.exp((Math.random()-.5)*.6))))}
+const owner='training-'+(sessionStorage.aiTrainingOwner||(sessionStorage.aiTrainingOwner=crypto.randomUUID()));
+async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Player-Id':owner},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||r.statusText);return data}
+async function trainingApi(body){
+  const r=await fetch('/api/training',body?{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{cache:'no-store'});
+  if(r.status===404)throw Error('服务器尚未加载训练共享接口，请重启 python server.py 后刷新。');
+  const value=await r.json();if(!r.ok)throw Error(value.error||'训练同步失败');return value;
+}
+async function loadTraining(){
+  let state=await trainingApi();
+  if(!state.checkpoint||!state.policy){
+    let old=null,policy=null;try{old=JSON.parse(localStorage.getItem(key)||'null');policy=JSON.parse(localStorage.getItem('autochess-ai-policy-v1')||'null')}catch{}
+    if((!state.checkpoint&&old)||(!state.policy&&policy))state=await trainingApi({mode:'import',checkpoint:!state.checkpoint?old:null,policy:!state.policy?policy:null});
+  }
+  checkpoint=state.checkpoint;revision=state.revision;
+}
+function cleanup(){for(const f of frames)f.remove();frames=[]}
+function loadAgent(seat){return new Promise((resolve,reject)=>{
+  const f=document.createElement('iframe');f.hidden=true;frames.push(f);
+  const timer=setTimeout(()=>reject(Error('AI 加载超时')),60000);
+  f.onload=async()=>{try{const a=f.contentWindow.arenaAgent;if(!a)throw Error('AI 模块未加载');await a.init(seat);clearTimeout(timer);resolve({id:seat.id,a})}catch(e){clearTimeout(timer);reject(e)}};
+  f.src='/index.html?arena-agent='+encodeURIComponent(seat.id);document.body.append(f);
+})}
+async function match(population,game,generation,games,guides){
+  cleanup();let {lobby}=await api('/api/arena/start',{nickname:'训练 AI 0',training:true});
+  const seats=[...lobby.seats].sort((a,b)=>a.number-b.number),agents=await Promise.all(seats.map(loadAgent));
+  if(!guides)guides=agents[0].a.guides();
+  for(let i=0;i<8;i++){agents[i].candidate=(i+game)%8;agents[i].a.configure({weights:population[agents[i].candidate],guides})}
+  for(let round=1;round<=100;round++){
+    const alive=agents.filter(x=>lobby.seats.find(p=>p.id===x.id).health>0);
+    // Rotate buying order as well as seat assignment to reduce shared-pool priority bias.
+    const order=alive.slice(round%alive.length).concat(alive.slice(0,round%alive.length));
+    for(let step=0;step<110;step++){let active=false;for(const x of order)active=(await x.a.step())||active;if(!active)break}
+    for(const x of alive)await x.a.submit();
+    const result=await api('/api/arena/resolve',{round});lobby=result.lobby;
+    for(const x of alive)await x.a.result(result.results[x.id],lobby.finished);
+    show(`第 ${generation} 代 · 第 ${game+1}/${games} 局 · 第 ${round} 回合\n`+lobby.seats.map(p=>`${p.name}: ${p.health} HP${p.rank?' · #'+p.rank:''}`).join('\n'));
+    if(stopped)throw Error('已停止；本代未完成的数据不参与更新，之前保存的结果保留。');
+    if(lobby.finished)return {guides,metrics:agents.map(x=>({candidate:x.candidate,...reward(x.a.inspect().board,guides,lobby.seats.find(p=>p.id===x.id).rank)}))};
+    for(const x of agents.filter(x=>lobby.seats.find(p=>p.id===x.id).health>0))await x.a.prepare();
+  }
+  throw Error('达到 100 回合安全上限，本代不计分；请检查是否出现无法结束的阵容。');
+}
+$('run').onclick=async()=>{
+  if(running)return;
+  const generations=Number($('generations').value),games=Number($('games').value);
+  if(!Number.isInteger(generations)||generations<1||generations>1000||!Number.isInteger(games)||games<1||games>100){show('请输入有效的代数和局数。');return}
+  running=true;stopped=false;$('run').disabled=true;$('stop').disabled=false;$('apply').disabled=true;
+  try{
+    await loadTraining();
+    let best=checkpoint?.weights||[1,1,1,1,1,1],guides=null;
+    for(let generation=0;generation<generations;generation++){
+      const population=[best,...Array.from({length:7},()=>mutate(best))],scores=Array(8).fill(0),records=[];
+      for(let game=0;game<games;game++){const result=await match(population,game,(checkpoint?.generation||0)+1,games,guides);guides=result.guides;records.push(result.metrics);for(const m of result.metrics)scores[m.candidate]+=m.score/games}
+      const winner=scores.indexOf(Math.max(...scores));best=population[winner];
+      const entry={generation:(checkpoint?.generation||0)+1,scores,population,records,winner,time:new Date().toISOString()};
+      checkpoint={version:1,generation:entry.generation,weights:best,guides,history:[...(checkpoint?.history||[]),entry].slice(-100)};
+      localStorage.setItem('autochess-training-unsynced',JSON.stringify(checkpoint));
+      const saved=await trainingApi({mode:'save',revision,checkpoint});revision=saved.revision;checkpoint=saved.checkpoint;
+      localStorage.removeItem('autochess-training-unsynced');
+      show(`第 ${entry.generation} 代已保存。平均评分 ${scores[winner].toFixed(2)}\n参数：${best.map(v=>v.toFixed(3)).join(', ')}\n`);
+      await new Promise(r=>setTimeout(r,0));if(stopped)break;
+    }
+  }catch(e){show(e.message)}finally{cleanup();running=false;$('run').disabled=false;$('stop').disabled=true;$('apply').disabled=!checkpoint;$('export').disabled=!checkpoint}
+};
+$('stop').onclick=()=>{stopped=true;$('stop').disabled=true};
+$('apply').onclick=async()=>{try{const saved=await trainingApi({mode:'apply',revision});revision=saved.revision;show('已应用到服务器。所有浏览器中新开始的游戏 AI 将使用这套参数。')}catch(e){show(e.message)}};
+$('export').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(checkpoint,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='ai-training.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+$('run').disabled=true;
+loadTraining().then(()=>{show(checkpoint?`已读取服务器第 ${checkpoint.generation} 代结果，可继续训练或应用。`:'服务器尚无训练结果，可以开始训练。');$('run').disabled=false;$('apply').disabled=!checkpoint;$('export').disabled=!checkpoint}).catch(e=>show(e.message));
+window.addEventListener('beforeunload',e=>{if(running){e.preventDefault();e.returnValue=''}});
+</script></html>

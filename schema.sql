@@ -189,7 +189,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 信仰搅拌机 / Sankta Mikaparato
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Sankta Mikaparato','信仰搅拌机','拉特兰干员','拉特兰',6,6,6,1,'#e53935','复活；遗计：召唤1个CONFESS-47使其获得复活，并随机对1个敌人造成2铳弹伤害','{"mechanics":["revive","legacy","bullet_damage"],"revive":true,"legacy":{"type":"summon_then_bullet","summon_id":"CONFESS_47","grant_revive":true,"damage":2,"hits":1,"target":"random","consume_revive":true},"golden_description":"复活；遗计：召唤1个金色的CONFESS-47使其获得复活，并随机对1个敌人造成2铳弹伤害2次","golden_overrides":{"description":"复活；遗计：召唤1个金色的CONFESS-47使其获得复活，并随机对1个敌人造成2铳弹伤害2次","legacy":{"type":"summon_then_bullet","summon_id":"CONFESS_47","summon_golden":true,"grant_revive":true,"damage":2,"hits":2,"target":"random","consume_revive":true}}}')
+VALUES ('Sankta Mikaparato','信仰搅拌机','拉特兰干员','拉特兰',6,6,6,1,'#e53935','复活；遗计：召唤1个CONFESS-47使其获得复活，并随机对1个敌人造成2铳弹伤害','{"mechanics":["revive","legacy","bullet_damage"],"revive":true,"legacy":{"type":"summon_then_bullet","summon_id":"CONFESS_47","grant_revive":true,"damage":2,"hits":1,"target":"random"},"golden_description":"复活；遗计：召唤1个金色的CONFESS-47使其获得复活，并随机对1个敌人造成2铳弹伤害2次","golden_overrides":{"description":"复活；遗计：召唤1个金色的CONFESS-47使其获得复活，并随机对1个敌人造成2铳弹伤害2次","legacy":{"type":"summon_then_bullet","summon_id":"CONFESS_47","summon_golden":true,"grant_revive":true,"damage":2,"hits":2,"target":"random"}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
@@ -665,15 +665,6 @@ ON CONFLICT(id) DO UPDATE SET
     attack_range=excluded.attack_range, color=excluded.color,
     description=excluded.description, extras_json=excluded.extras_json;
 
--- 哈洛德 / Harold
-INSERT INTO unit_cards
-    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Harold','哈洛德','维多利亚干员','维多利亚',3,4,3,1,'#5b2c83','光环：使所有友方棋子获得【血战：使自身获得+2/+2】','{"mechanics": ["aura"], "bloodbattle_aura": 2, "golden_description": "光环：使所有友方棋子获得【血战：使自身获得+4/+4】", "golden_overrides": {"bloodbattle_aura": 4}}')
-ON CONFLICT(id) DO UPDATE SET
-    name=excluded.name, role=excluded.role, faction=excluded.faction,
-    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
-    attack_range=excluded.attack_range, color=excluded.color,
-    description=excluded.description, extras_json=excluded.extras_json;
 
 -- 刺玫 / Vendela
 INSERT INTO unit_cards
@@ -971,6 +962,178 @@ ON CONFLICT(id) DO UPDATE SET
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
 VALUES ('Primal Sea Piercer','始海穿刺者','海怪','阿戈尔',1,5,5,1,'#153c72','嘲讽','{"summon_only": true, "sea_monster": true, "mechanics": ["guard"], "golden_description": "嘲讽", "golden_overrides": {}, "guard": true}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 谢拉格
+
+-- 讯使 / Courier
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Courier','讯使','谢拉格干员','谢拉格',1,1,2,1,'#84c9e2','遗计：召唤1个具有突袭(1)的山雪鬼','{"mechanics": ["legacy"], "legacy": {"type": "summon", "summon_id": "Mountain Snowdevil", "count": 1}, "golden_description": "遗计：召唤2个具有突袭(1)的山雪鬼", "golden_overrides": {"legacy": {"type": "summon", "summon_id": "Mountain Snowdevil", "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 角峰 / Matterhorn
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Matterhorn','角峰','谢拉格干员','谢拉格',1,4,1,1,'#84c9e2','攻击前：自身永久获得+1攻击力','{"mechanics": ["permanent"], "before_attack": {"type": "self_permanent_buff", "attack": 1, "max_hp": 0}, "golden_description": "攻击前：自身永久获得+2攻击力", "golden_overrides": {"before_attack": {"type": "self_permanent_buff", "attack": 2, "max_hp": 0}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 史都华德 / Steward
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Steward','史都华德','谢拉格干员','谢拉格',2,3,1,1,'#84c9e2','友方棋子攻击前，使其永久获得+2/+1','{"mechanics": ["permanent"], "ally_before_attack": {"attack": 2, "max_hp": 1}, "golden_description": "友方棋子攻击前，使其永久获得+4/+2", "golden_overrides": {"ally_before_attack": {"attack": 4, "max_hp": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 雪猎 / Snow Hunter
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Snow Hunter','雪猎','谢拉格干员','谢拉格',2,2,4,1,'#84c9e2','护盾；连击；先手：使左侧棋子获得连击','{"mechanics": ["shield", "combo", "initiative"], "shield": true, "combo": true, "initiative": {"type": "grant_neighbor_combo", "adjacent": false}, "golden_description": "护盾；连击；先手：使相邻的棋子获得连击", "golden_overrides": {"initiative": {"type": "grant_neighbor_combo", "adjacent": true}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 银灰 / SilverAsh
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('SilverAsh','银灰','谢拉格干员','谢拉格',2,4,2,1,'#84c9e2','攻击前：召唤1个山雪鬼，并攻击目标，此山雪鬼不会占用格子，攻击后会立刻离场','{"before_attack_assist": 1, "golden_description": "攻击前：召唤2个山雪鬼，并攻击目标，此山雪鬼不会占用格子，攻击后会立刻离场（如果第1个山雪鬼攻击后，目标死亡，则不会再召唤第2个山雪鬼）", "golden_overrides": {"before_attack_assist": 2}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 极光 / Aurora
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Aurora','极光','谢拉格干员','谢拉格',2,3,3,1,'#84c9e2','嘲讽；先手：召唤1个讯使，并使其获得突袭(1)；如果满场，则有空位时召唤','{"guard": true, "mechanics": ["guard", "initiative"], "initiative": {"type": "summon_wait_raid", "summon_id": "Courier", "count": 1, "raid_hits": 1}, "golden_description": "嘲讽；先手：召唤2个讯使，并使其获得突袭(1)；如果满场，则有空位时召唤", "golden_overrides": {"initiative": {"type": "summon_wait_raid", "summon_id": "Courier", "count": 2, "raid_hits": 1}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 烈夏 / Leto
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Leto','烈夏','谢拉格干员','谢拉格',3,7,1,1,'#84c9e2','阻挡；攻击前，自身永久获得+1/+1','{"mechanics": ["block", "permanent"], "block": true, "before_attack": {"type": "self_permanent_buff", "amount": 1}, "golden_description": "阻挡；攻击前，自身永久获得+2/+2", "golden_overrides": {"before_attack": {"type": "self_permanent_buff", "amount": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 崖心 / Cliffheart
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Cliffheart','崖心','谢拉格干员','谢拉格',3,3,3,1,'#84c9e2','上场：选择1个谢拉格阵营棋子，使其获得+3/+3和连击','{"mechanics": ["on_deploy"], "on_deploy": {"type": "select_buff_combo", "faction": "谢拉格", "attack": 3, "max_hp": 3}, "golden_description": "上场：选择1个谢拉格阵营棋子，使其获得+6/+6和连击", "golden_overrides": {"on_deploy": {"type": "select_buff_combo", "faction": "谢拉格", "attack": 6, "max_hp": 6}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 耶拉 / Kjera
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Kjera','耶拉','谢拉格干员','谢拉格',4,3,6,1,'#84c9e2','遗计：召唤3个具有突袭(1)的山雪鬼','{"mechanics": ["legacy"], "legacy": {"type": "summon", "summon_id": "Mountain Snowdevil", "count": 3}, "golden_description": "遗计：召唤6个具有突袭(1)的山雪鬼", "golden_overrides": {"legacy": {"type": "summon", "summon_id": "Mountain Snowdevil", "count": 6}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 初雪 / Pramanix
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Pramanix','初雪','谢拉格干员','谢拉格',4,6,4,1,'#84c9e2','护盾；冲阵(2)：自身永久获得+2/+2','{"mechanics": ["shield", "charge", "permanent"], "shield": true, "charge": {"type": "self_permanent_buff", "threshold": 2, "amount": 2}, "golden_description": "护盾；冲阵(2)：自身永久获得+4/+4", "golden_overrides": {"charge": {"type": "self_permanent_buff", "threshold": 2, "amount": 4}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 锏 / Degenbrecher
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Degenbrecher','锏','谢拉格干员','谢拉格',5,7,3,1,'#84c9e2','阻挡；攻击前：自身永久获得+1/+1；并获得护盾（护盾每回合最多1次）','{"mechanics": ["block", "permanent"], "block": true, "before_attack": {"type": "self_permanent_buff", "amount": 1, "shield_limit": 1}, "golden_description": "阻挡；攻击前：自身永久获得+2/+2；并获得护盾（护盾每回合最多2次）", "golden_overrides": {"before_attack": {"type": "self_permanent_buff", "amount": 2, "shield_limit": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 灵知 / Gnosis
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Gnosis','灵知','谢拉格干员','谢拉格',4,5,4,1,'#84c9e2','招募&回营：获得1张【雪境先驱】','{"mechanics": ["recruit", "return_camp"], "recruit": {"type": "gain_snow_vanguard", "count": 1}, "return_camp": {"type": "gain_snow_vanguard", "count": 1}, "golden_description": "招募&回营：获得2张【雪境先驱】", "golden_overrides": {"recruit": {"type": "gain_snow_vanguard", "count": 2}, "return_camp": {"type": "gain_snow_vanguard", "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 哈洛德 / Harold
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Harold','哈洛德','谢拉格干员','谢拉格',5,6,3,1,'#84c9e2','冲阵(4)：获得1个谢拉格阵营的随机棋子','{"mechanics": ["charge"], "charge": {"threshold": 4, "faction": "谢拉格", "count": 1}, "golden_description": "冲阵(4)：获得2个谢拉格阵营的随机棋子", "golden_overrides": {"charge": {"threshold": 4, "faction": "谢拉格", "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 圣聆初雪 / Pramanix the Prerita
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Pramanix the Prerita','圣聆初雪','谢拉格干员','谢拉格',6,8,1,1,'#84c9e2','冲阵(2)：使所有友方棋子永久获得+3/+3，谢拉格阵营棋子额外再获得+1/+1','{"mechanics": ["charge", "permanent"], "charge": {"type": "team_faction_permanent_buff", "threshold": 2, "amount": 3, "faction": "谢拉格", "extra": 1}, "golden_description": "冲阵(2)：使所有友方棋子永久获得+6/+6，谢拉格阵营棋子额外再获得+2/+2", "golden_overrides": {"charge": {"type": "team_faction_permanent_buff", "threshold": 2, "amount": 6, "faction": "谢拉格", "extra": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 凛御银灰 / SilverAsh the Reignfrost
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('SilverAsh the Reignfrost','凛御银灰','谢拉格干员','谢拉格',6,7,7,1,'#84c9e2','攻击前：召唤1个真银斩，使其获得凛御银灰的1倍攻击力和突袭(1)，并攻击目标','{"before_attack_assist": 1, "attack_assist": {"summon_id": "Truesilver Slash", "inherit_attack": true, "credit_bloodbattle": true}, "golden_description": "攻击前：召唤2个真银斩，使其获得凛御银灰的1倍攻击力和突袭(1)，并攻击目标（如果第1个真银斩攻击后，目标死亡，则不会再召唤第2个真银斩）", "golden_overrides": {"before_attack_assist": 2}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 山雪鬼 / Mountain Snowdevil（讯使召唤专属，不可通过获取或复制获得）
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Mountain Snowdevil','山雪鬼','召唤物','谢拉格',1,1,2,1,'#84c9e2','突袭(1)','{"summon_only": true, "cannot_gain": true, "mechanics": ["raid"], "raid": {"hits": 1}, "golden_description": "突袭(2)", "golden_overrides": {"raid": {"hits": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 真银斩（凛御银灰专属临时召唤物）
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Truesilver Slash','真银斩','召唤物','谢拉格',1,7,7,1,'#84c9e2','真银斩被召唤不会占用格子，将攻击凛御银灰所攻击的目标，攻击后会立刻离场，可以触发凛御银灰的血战','{"summon_only": true, "cannot_gain": true, "mechanics": ["raid"], "raid": {"hits": 1}, "truesilver_slash": true}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,

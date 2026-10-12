@@ -1,22 +1,51 @@
 """???????SQLite ???????? API????python server.py"""
 from __future__ import annotations
-import copy, json, logging, math, random, re, socket, sqlite3
+import copy, json, logging, math, random, re, socket, sqlite3, uuid, threading, ipaddress
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
 from pathlib import Path
 from urllib.parse import urlparse
+
+# Logistics resolves before combat; nested bloodbattle may grant stats but cannot fire.
+_logistics_active = ContextVar("logistics_active", default=False)
+
+def logistics_phase(fn):
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        token = _logistics_active.set(True)
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _logistics_active.reset(token)
+    return wrapped
 
 ROOT = Path(__file__).parent
 DB_PATH = ROOT / "data" / "autochess.sqlite"
 SCHEMA_PATH = ROOT / "schema.sql"
 PORT = 11451
+OWNER_EDIT_PATH = ROOT / 'data' / 'owner-edit.json'
+RELEASE_PATH = ROOT / 'release-defaults.json'
+
+def release_defaults():
+    return json.loads(RELEASE_PATH.read_text(encoding='utf-8')) if RELEASE_PATH.exists() else {}
+
+def owner_can_edit(address, origin=None, host=None):
+    try:
+        if not ipaddress.ip_address(address).is_loopback:return False
+        if origin and urlparse(origin).netloc!=host:return False
+        return json.loads(OWNER_EDIT_PATH.read_text(encoding='utf-8')).get('enabled') is True
+    except (ValueError,OSError):return False
+
 SKILLS = [
  (f"ammo_pact_{lv}",f"\u94f3\u5f39\u534f\u7ea6.{lv}","skill","\u94f3\u5f39\u534f\u7ea6",lv,lv,f"\u9009\u62e91\u4e2a\u68cb\u5b50\uff0c\u4f7f\u5176\u83b7\u5f97+{lv}/+{lv}\u548c{(lv+1)//2}\u70b9\u94f3\u5f39\u5f3a\u5ea6","#9b6dff",(lv+1)//2) for lv in range(1,7)
 ]
 AI_POWER = [None,None,5,5,5,8,10,20,30,50,100,200,300,400]
 SHOP_UPGRADE_BASE_COSTS = [5,9,12,14,15]
+SHOP_STAR_WEIGHTS = ((100,), (45,55), (28,34,38), (19,23,26,32), (14,17,19,24,26), (12,15,16,21,22,14))
+POOL_COPIES = {tier:25-3*tier for tier in range(1,7)}
 MAX_SHOP_LEVEL = 6
 UNIT_CARD_COST = 3
 UNIT_SELL_REFUND = 1
@@ -26,8 +55,14 @@ def unit_border_color(faction): return NEUTRAL_BORDER_COLOR if faction=="\u4e2d\
 
 def belongs_to_faction(unit, faction):
     return bool(unit and unit.get("faction") in (faction,"\u4efb\u610f"))
+_arena_connection = ContextVar("arena_connection", default=None)
+
 @contextmanager
 def db():
+    shared = _arena_connection.get()
+    if shared is not None:
+        yield shared
+        return
     con=sqlite3.connect(DB_PATH)
     con.row_factory=sqlite3.Row
     try:
@@ -51,6 +86,10 @@ def initialise_database():
         if "shop_rounds" not in cols: con.execute("ALTER TABLE players ADD COLUMN shop_rounds INTEGER NOT NULL DEFAULT 0")
         if "total_gold_earned" not in cols: con.execute("ALTER TABLE players ADD COLUMN total_gold_earned INTEGER NOT NULL DEFAULT 3")
         con.executescript(schema)
+        con.execute("CREATE TABLE IF NOT EXISTS arena_rooms (owner TEXT PRIMARY KEY, data TEXT NOT NULL)")
+        con.execute("CREATE TABLE IF NOT EXISTS arena_members (player_id TEXT PRIMARY KEY, owner TEXT NOT NULL)")
+        con.execute("CREATE TABLE IF NOT EXISTS shop_purchases (token TEXT PRIMARY KEY, player_id TEXT NOT NULL, card_id TEXT NOT NULL, returned INTEGER NOT NULL DEFAULT 0)")
+        con.execute("CREATE INDEX IF NOT EXISTS shop_purchases_player ON shop_purchases(player_id,card_id,returned)")
         con.execute("INSERT OR IGNORE INTO players(id,gold,health,round,shop_level,shop_discount,total_gold_earned) VALUES('local',3,50,1,1,0,3)")
 
 def unit_cards_from_db():
@@ -90,7 +129,9 @@ def ensure_player(player_id="local"):
 
 def reset_player(player_id="local"):
     player_id=normalize_player_id(player_id)
-    with db() as con: con.execute("INSERT OR REPLACE INTO players(id,gold,health,round,shop_level,shop_discount,total_gold_earned) VALUES(?,?,?,?,?,?,?)",(player_id,3,50,1,1,0,3))
+    with db() as con:
+        con.execute("DELETE FROM shop_purchases WHERE player_id=?",(player_id,))
+        con.execute("INSERT OR REPLACE INTO players(id,gold,health,round,shop_level,shop_discount,total_gold_earned) VALUES(?,?,?,?,?,?,?)",(player_id,3,50,1,1,0,3))
     return player(player_id)
 
 def cards():
@@ -155,6 +196,11 @@ def cards():
         skills.append(dict(id=f'life_tower_{lv}',name=f'生命塔台.{lv}',card_type='skill',faction='技能',cost=lv,effect_value=lv,
             description=f'直到下1回合，使所有友方棋子获得+{lv}/+{lv}',color='#ef82ac',bullet_strength=0,
             target_scope='board',effect='life_tower',unit_id=None,stars=0))
+    for lv in range(1,7):
+        amount=math.ceil((lv+1)/2)
+        skills.append(dict(id=f'snow_vanguard_{lv}',name=f'雪境先驱.{lv}',card_type='skill',faction='技能',cost=lv,effect_value=amount,
+            description=f'本回合内，友方攻击前永久获得+{amount}/+{amount}',color='#84c9e2',bullet_strength=0,
+            target_scope='board',effect='snow_vanguard',mechanics=['permanent'],unit_id=None,stars=0))
     return sorted(units+skills,key=lambda c:(card_tier(c),c["id"]))
 
 def card_tier(card): return card["tier"] if card.get("card_type")=="unit" else card["cost"]
@@ -168,29 +214,53 @@ def player(player_id="local"):
         return with_shop_status(row)
 
 def shop(count=None, player_id="local"):
-    level=player(player_id)["shop_level"]; count=shop_slot_count(level) if count is None else count
+    state=player(player_id); player_id=state["id"]; level=state["shop_level"]
+    count=shop_slot_count(level) if count is None else max(0,int(count))
     pool=[c for c in cards() if c["card_type"]=="unit" and not c.get("summon_only") and card_tier(c)<=level]
-    return [dict(random.choice(pool)) for _ in range(count)] if pool else [None]*count
+    with db() as con:
+        used={r[0]:r[1] for r in con.execute("SELECT card_id,COUNT(*) FROM shop_purchases WHERE player_id IN (SELECT player_id FROM arena_members WHERE owner=(SELECT owner FROM arena_members WHERE player_id=?) UNION SELECT ?) AND returned=0 GROUP BY card_id",(player_id,player_id))}
+    remaining={c["id"]:max(0,POOL_COPIES[card_tier(c)]-used.get(c["id"],0)) for c in pool}
+    result=[]
+    for _ in range(count):
+        tiers=[t for t in range(1,level+1) if any(card_tier(c)==t and remaining[c["id"]]>0 for c in pool)]
+        if not tiers: result.append(None);continue
+        tier=random.choices(tiers,weights=[SHOP_STAR_WEIGHTS[level-1][t-1] for t in tiers],k=1)[0]
+        candidates=[c for c in pool if card_tier(c)==tier and remaining[c["id"]]>0]
+        card=random.choices(candidates,weights=[remaining[c["id"]] for c in candidates],k=1)[0]
+        remaining[card["id"]]-=1
+        result.append(dict(card))
+    return result
 
 def buy_card(card_id, player_id="local", bypass_shop_level=False):
+    card=next((c for c in cards() if c["id"]==card_id),None)
     with db() as con:
-        card=next((c for c in cards() if c["id"]==card_id),None); row=con.execute("SELECT gold,shop_level FROM players WHERE id=?",(player_id,)).fetchone()
+        con.execute("BEGIN IMMEDIATE")
+        row=con.execute("SELECT gold,shop_level FROM players WHERE id=?",(player_id,)).fetchone()
         if not card: raise ValueError("\u5361\u724c\u4e0d\u5b58\u5728")
         if card["card_type"]!="unit": raise ValueError("\u6280\u80fd\u5361\u4e0d\u80fd\u4ece\u5546\u5e97\u8d2d\u4e70")
-        if card.get("summon_only"): raise ValueError("海怪只能通过召唤出现")
+        if card.get("summon_only"): raise ValueError("该棋子只能通过召唤出现")
         if not row: raise ValueError("\u73a9\u5bb6\u4e0d\u5b58\u5728")
         if card_tier(card)>row["shop_level"] and not bypass_shop_level: raise ValueError("\u5546\u5e97\u7b49\u7ea7\u4e0d\u8db3\uff0c\u4e0d\u80fd\u8d2d\u4e70\u8be5\u68cb\u5b50")
+        used=con.execute("SELECT COUNT(*) FROM shop_purchases WHERE player_id IN (SELECT player_id FROM arena_members WHERE owner=(SELECT owner FROM arena_members WHERE player_id=?) UNION SELECT ?) AND card_id=? AND returned=0",(player_id,player_id,card_id)).fetchone()[0]
+        if used>=POOL_COPIES[card_tier(card)]: raise ValueError("该棋子的卡池已售罄")
         cost=card_purchase_cost(card)
         if row["gold"]<cost: raise ValueError("\u91d1\u5e01\u4e0d\u8db3")
+        token=uuid.uuid4().hex
+        con.execute("INSERT INTO shop_purchases(token,player_id,card_id) VALUES(?,?,?)",(token,player_id,card_id))
+        card=dict(card,pool_tokens=[token])
         con.execute("UPDATE players SET gold=? WHERE id=?",(row["gold"]-cost,player_id))
     data=player(player_id); data["card"]=card; data["spent"]=cost; return data
 
-def sell_unit(card_id, player_id="local", half=False):
+def sell_unit(card_id, player_id="local", half=False, pool_tokens=None):
     card=next((c for c in cards() if c["id"]==card_id),None)
     if not card or card["card_type"]!="unit": raise ValueError("\u53ea\u80fd\u51fa\u552e\u68cb\u5b50")
     with db() as con:
+        con.execute("BEGIN IMMEDIATE")
         row=con.execute("SELECT gold FROM players WHERE id=?",(player_id,)).fetchone()
         if not row: raise ValueError("\u73a9\u5bb6\u4e0d\u5b58\u5728")
+        tokens=pool_tokens if isinstance(pool_tokens,list) else []
+        for token in set(t for t in tokens if isinstance(t,str)):
+            con.execute("UPDATE shop_purchases SET returned=1 WHERE token=? AND player_id=? AND card_id=? AND returned=0",(token,player_id,card_id))
         refund=UNIT_SELL_REFUND; con.execute("UPDATE players SET gold=?,total_gold_earned=total_gold_earned+? WHERE id=?",(row["gold"]+refund,refund,player_id))
     data=player(player_id); data["refund"]=refund; return data
 
@@ -287,7 +357,7 @@ def apply_venom_after_damage(source, target, damage):
 def mark_killer(unit, killer_index, source=None, source_effect=None):
     unit["_killer_index"]=int(killer_index)
     if '_blood_killer' not in unit:
-        unit['_blood_killer']=[int(killer_index),id(source)] if source is not None and source_effect!='legacy' else None
+        unit['_blood_killer']=(source.get('_bloodbattle_owner') or [int(killer_index),id(source)]) if source is not None and source_effect!='legacy' else None
 
 
 def trigger_bloodbattle(victim, side, foes, events, opponents=None):
@@ -299,21 +369,25 @@ def trigger_bloodbattle(victim, side, foes, events, opponents=None):
     resolve_bloodbattle(source,idx,'right' if side=='left' else 'left',foes,opponents or [],events)
 
 
+def is_attack_target(unit):
+    return bool(unit and not unit.get("truesilver_slash") and unit.get("id")!="Truesilver Slash")
+
+
 def choose_target(foes):
-    living=[(i,u) for i,u in battle_entries(foes) if u and u.get("current_hp",0)>0]; guards=[(i,u) for i,u in living if is_guard(u)]; return random.choice(guards or living)
+    living=[(i,u) for i,u in battle_entries(foes) if is_attack_target(u) and u.get("current_hp",0)>0]; guards=[(i,u) for i,u in living if is_guard(u)]; return random.choice(guards or living) if living else None
 def nearest_target(foes, origin_index, include_dead=False):
-    living=[(i,u) for i,u in battle_entries(foes) if u and u.get("current_hp",0)>0]
+    living=[(i,u) for i,u in battle_entries(foes) if is_attack_target(u) and u.get("current_hp",0)>0]
     candidates=[(i,u) for i,u in living if is_guard(u)] or living
     if not candidates and include_dead:
-        candidates=[(i,u) for i,u in battle_entries(foes) if u and u.get("current_hp",0)<=0]
+        candidates=[(i,u) for i,u in battle_entries(foes) if is_attack_target(u) and u.get("current_hp",0)<=0]
     if not candidates: return None
     dist=min(abs(i-origin_index) for i,_ in candidates); return random.choice([(i,u) for i,u in candidates if abs(i-origin_index)==dist])
 
 def random_target(foes, include_dead=False):
-    living=[(i,u) for i,u in battle_entries(foes) if u and u.get("current_hp",0)>0]
+    living=[(i,u) for i,u in battle_entries(foes) if is_attack_target(u) and u.get("current_hp",0)>0]
     if living: return random.choice(living)
     if include_dead:
-        dead=[(i,u) for i,u in battle_entries(foes) if u and u.get("current_hp",0)<=0]
+        dead=[(i,u) for i,u in battle_entries(foes) if is_attack_target(u) and u.get("current_hp",0)<=0]
         return random.choice(dead) if dead else None
     return None
 
@@ -347,7 +421,6 @@ def apply_round_aura_to_unit(unit, team, source=None):
     return unit
 
 def make_revived_unit(unit, team=None):
-    if unit.get("revive_consumed_by_summon"): return None
     if not (unit.get("revive") or "revive" in unit.get("mechanics",[])): return None
     # Return as an unbuffed initial copy, preserving card quality. Round-long
     # auras are then reapplied because they remain active for the whole battle.
@@ -365,6 +438,8 @@ def make_revived_unit(unit, team=None):
     for k in ("bullet_strength","bullet_strength_temp","bullet_power","ammo_strength","ammo_power","gun_strength","gun_power","summoned_by_phase"):
         revived.pop(k, None)
     apply_round_aura_to_unit(revived,team or [],unit)
+    revived["before_attack_shield_count"]=int(unit.get("before_attack_shield_count",0))
+    revived["charge_count"]=int(unit.get("charge_count",0))
     revived["enemy_death_copy_count"]=int(unit.get("enemy_death_copy_count",0))
     revived["enemy_death_growth_count"]=int(unit.get("enemy_death_growth_count",0))
     revived["summoned_by_revival"] = True
@@ -388,7 +463,7 @@ def trigger_death_feud(dead_unit, dead_index, side, allies, foes, events):
                     if ti is not None: bloodbattle_gain(allies[ti],ti,side,allies,events,int(eff.get("amount",2)))
             elif eff.get("type")=="random_bullet_damage":
                 target_count=max(1,int(eff.get("target_count",1) or 1))
-                living=[(i,t) for i,t in battle_entries(foes) if t and t.get("current_hp",0)>0]
+                living=[(i,t) for i,t in battle_entries(foes) if is_attack_target(t) and t.get("current_hp",0)>0]
                 batch_start=len(events)
                 events.append({"type":"bullet_batch_start"})
                 pending=[]
@@ -417,6 +492,10 @@ def friendly_legacy_trigger_count(team):
 
 
 _effect_deaths=ContextVar('effect_deaths',default=None)
+_waiting_summons=ContextVar('waiting_summons',default=None)
+_draining_summons=ContextVar('draining_summons',default=False)
+_summon_raid_depth=ContextVar('summon_raid_depth',default=0)
+_death_chain_depth=ContextVar('death_chain_depth',default=0)
 
 def atomic_effect(fn):
     @wraps(fn)
@@ -432,6 +511,7 @@ def atomic_effect(fn):
         finally:
             _effect_deaths.reset(token)
         resolve_pending_deaths(pending,events)
+        drain_waiting_summons(events)
         events.append({'type':'effect_end'})
         return result
     return wrapped
@@ -446,7 +526,7 @@ def bloodbattle_gain(source, idx, side, team, events, amount, permanent=True):
 
 
 def leftmost_bullet_growth(source, idx, side, team, foes, events, effect):
-    target=next(((i,u) for i,u in battle_entries(foes) if u and u.get('current_hp',0)>0),None)
+    target=next(((i,u) for i,u in battle_entries(foes) if is_attack_target(u) and u.get('current_hp',0)>0),None)
     if target:
         deal_bullet_damage(source,idx,side,team,foes,*target,effect.get('damage',0),events,source_effect='bloodbattle')
     bloodbattle_gain(source,idx,side,team,events,int(effect.get('growth',0)))
@@ -462,7 +542,7 @@ def resolve_bloodbattle(source, idx, side, team, foes, events):
         elif intrinsic.get('type')=='team_growth_shop_bullet':
             for ti,target in enumerate(team):
                 if can_receive_buff(target): bloodbattle_gain(target,ti,side,team,events,int(intrinsic.get('amount',1)))
-            target=next(((i,u) for i,u in battle_entries(foes) if u and u.get('current_hp',0)>0),None)
+            target=next(((i,u) for i,u in battle_entries(foes) if is_attack_target(u) and u.get('current_hp',0)>0),None)
             if target:
                 damage=max(1,min(6,int(source.get('battle_shop_level',1))))*int(intrinsic.get('multiplier',1))
                 deal_bullet_damage(source,idx,side,team,foes,*target,damage,events,source_effect='bloodbattle')
@@ -499,7 +579,7 @@ def trigger_enemy_death_copy(victim, side, watchers, events):
         limit=int(watcher.get('enemy_death_copy_limit',0));used=int(watcher.get('enemy_death_copy_count',0))
         if used>=limit: continue
         card=card_by_id(victim.get('id'))
-        if not card: continue
+        if not card or card.get('cannot_gain'): continue
         watcher['enemy_death_copy_count']=used+1
         events.append(dict(type='gain_card',side='right' if side=='left' else 'left',from_slot=idx+1,
             **{'from':watcher['name']},card=card,card_id=card['id'],card_name=card['name'],source_effect='enemy_death_copy'))
@@ -528,6 +608,16 @@ def trigger_enemy_death_growth(side, watchers, opponents, events):
             resolve_enemy_death_growth(watcher,idx,source_side,watchers,opponents,events)
 
 
+def death_chain(fn):
+    @wraps(fn)
+    def wrapped(*args,**kwargs):
+        token=_death_chain_depth.set(_death_chain_depth.get()+1)
+        try: return fn(*args,**kwargs)
+        finally: _death_chain_depth.reset(token)
+    return wrapped
+
+
+@death_chain
 def handle_unit_death(unit, unit_index, side, team, foes, events):
     if unit.get('_death_confirmed') or not 0<=unit_index<len(team) or team[unit_index] is not unit: return
     if unit.get('_venom_destroyed'): unit['current_hp']=0
@@ -608,6 +698,7 @@ def trigger_injury_growth(unit, unit_index, side, team, events, actual_damage):
     events.append({"type":"permanent_buff","side":side,"slot":unit_index+1,"from":unit["name"],"to":unit["name"],"mechanic":"injury_growth","source_effect":"permanent","attack_gain":amount,"max_hp_gain":amount,"attack":unit.get("attack",0),"max_hp":unit.get("max_hp",1),"current_hp":unit.get("current_hp",0),"injury_growth_count":unit["injury_growth_count"]})
 
 def deal_bullet_damage(source, source_index, side, allies, foes, target_index, target, base, events, source_effect=None, pending_deaths=None, record_cumulative=True):
+    if _logistics_active.get() or not is_attack_target(target): return False
     strength=bullet_strength(source); dmg=int(base)+strength
     target_side="right" if side=="left" else "left"
     if dmg>0 and consume_shield(target):
@@ -621,7 +712,7 @@ def deal_bullet_damage(source, source_index, side, allies, foes, target_index, t
     venom_triggered=apply_venom_after_damage(source,target,dmg)
     dead=target["current_hp"]<=0
     if dead: mark_killer(target,source_index,source,source_effect)
-    event={"side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":target_side,"damage_type":"bullet","damage":dmg,"bullet_base_damage":int(base),"bullet_strength":strength,"counter_damage":0,"target_hp":target["current_hp"],"attacker_hp":source.get("current_hp",source.get("max_hp",0)),"target_dead":dead,"attacker_dead":False,"venom_triggered":venom_triggered}
+    event={"side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":target_side,"damage_type":"bullet","damage":dmg,"bullet_base_damage":int(base),"bullet_strength":strength,"counter_damage":0,"target_hp":target["current_hp"],"source_removed":not any(u is source for u in allies),"attacker_hp":source.get("current_hp",source.get("max_hp",0)),"target_dead":dead,"attacker_dead":False,"venom_triggered":venom_triggered}
     if source_effect: event["source_effect"]=source_effect
     events.append(event)
     if dmg>0 and record_cumulative:
@@ -647,7 +738,7 @@ def deal_spell_damage(source, source_index, side, allies, foes, target_index, ta
     venom_triggered=apply_venom_after_damage(source,target,dmg)
     dead=target["current_hp"]<=0
     if dead: mark_killer(target,source_index,source,source_effect)
-    event={"side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":target_side,"damage_type":"spell","damage":dmg,"spell_base_damage":int(base),"counter_damage":0,"target_hp":target["current_hp"],"attacker_hp":source.get("current_hp",source.get("max_hp",0)),"target_dead":dead,"attacker_dead":False,"venom_triggered":venom_triggered}
+    event={"side":side,"from":source["name"],"from_slot":source_index+1,"to":target["name"],"to_slot":target_index+1,"target_side":target_side,"damage_type":"spell","damage":dmg,"spell_base_damage":int(base),"counter_damage":0,"target_hp":target["current_hp"],"source_removed":not any(u is source for u in allies),"attacker_hp":source.get("current_hp",source.get("max_hp",0)),"target_dead":dead,"attacker_dead":False,"venom_triggered":venom_triggered}
     if source_effect: event["source_effect"]=source_effect
     events.append(event)
     if dmg>0:
@@ -733,15 +824,28 @@ def friendly_initiative_trigger_count(team):
 def resolve_one_precombat_effect(phase, unit, idx, team, foes, side, events):
     effect=unit.get(phase) or {}
     pending_deaths=[]
-    if effect.get("type")=="summon":
+    if effect.get("type")=="grant_neighbor_combo":
+        neighbors=spatial_neighbors(team,idx,lambda u:u.get("current_hp",0)>0 and not u.get("_death_confirmed"))
+        for ti in (neighbors if effect.get("adjacent") else neighbors[:1]):
+            if ti is None: continue
+            target=team[ti]
+            target["combo"]=True
+            target["mechanics"]=list(dict.fromkeys(target.get("mechanics",[])+["combo"]))
+            events.append(dict(type="grant_combo",side=side,slot=ti+1,from_slot=idx+1,**{"from":unit["name"],"to":target["name"]}))
+    elif effect.get("type")=="summon_wait_raid":
+        queue=_waiting_summons.get()
+        if queue is None:
+            queue=[];_waiting_summons.set(queue)
+        queue.append(dict(source=unit,index=idx,side=side,team=team,foes=foes,count=max(0,int(effect.get("count",1))),summon_id=effect["summon_id"],raid_hits=int(effect.get("raid_hits",1))))
+    elif effect.get("type")=="summon":
         for _ in range(max(0,int(effect.get("count",1)))):
             summon_unit_from_legacy(unit,idx,side,team,effect.get("summon_id"),events=events)
     elif effect.get("type")=="leftmost_attack_bullet":
         # Keep zero/negative-HP targets until all Tin Man shots have finished.
         # Each shot prefers living enemies; only an empty living pool uses corpses.
         for _ in range(friendly_initiative_trigger_count(team)):
-            candidates=[(i,u) for i,u in battle_entries(foes) if u and u.get('current_hp',0)>0]
-            if not candidates: candidates=[(i,u) for i,u in battle_entries(foes) if u and not u.get('_death_confirmed')]
+            candidates=[(i,u) for i,u in battle_entries(foes) if is_attack_target(u) and u.get('current_hp',0)>0]
+            if not candidates: candidates=[(i,u) for i,u in battle_entries(foes) if is_attack_target(u) and not u.get('_death_confirmed')]
             if not candidates: break
             ti,target=candidates[0]
             deal_bullet_damage(unit,idx,side,team,foes,ti,target,int(unit.get('attack',0))*int(effect.get('multiplier',1)),events,source_effect=phase,pending_deaths=pending_deaths)
@@ -756,7 +860,7 @@ def resolve_one_precombat_effect(phase, unit, idx, team, foes, side, events):
     elif effect.get("type")=="leftmost_bullet_growth":
         leftmost_bullet_growth(unit,idx,side,team,foes,events,effect)
     elif effect.get("type")=="leftmost_set_hp":
-        targets=[(i,u) for i,u in battle_entries(foes) if u and u.get('current_hp',0)>0][:int(effect.get('count',1))]
+        targets=[(i,u) for i,u in battle_entries(foes) if is_attack_target(u) and u.get('current_hp',0)>0][:int(effect.get('count',1))]
         for ti,target in targets:
             target['current_hp']=1
             events.append(dict(type='set_hp',side='right' if side=='left' else 'left',slot=ti+1,current_hp=1,source_effect=phase))
@@ -914,10 +1018,12 @@ def place_summon(unit,source,source_index,team):
     source["_summon_tail"]=unit["battle_position"]
 
 def summon_slot_for(team, origin_index):
-    order=[origin_index]+[i for i in range(len(team)) if i!=origin_index]
+    order=([origin_index] if 0<=origin_index<7 else [])+[i for i in range(min(7,len(team))) if i!=origin_index]
     for i in order:
         if 0<=i<len(team) and team[i] is None: return i
     return None
+
+_snow_vanguard = ContextVar("snow_vanguard",default=None)
 
 _life_tower_effects = ContextVar("life_tower_effects",default=None)
 
@@ -974,16 +1080,19 @@ def trigger_sea_summon_buff(unit, slot, side, team, events):
     # Also synchronize a global bonus when there were no living summon watchers.
     events.append({"type":"team_buff","side":side,"slot":slot+1,"from":unit["name"],"to":unit["name"],"attack":unit["attack"],"max_hp":unit["max_hp"],"current_hp":unit["current_hp"],"source_effect":"summon_sync"})
 
-def summon_unit_from_legacy(source, source_index, side, team, summon_id, grant_revive=False, events=None, summon_golden=False):
+def summon_unit_from_legacy(source, source_index, side, team, summon_id, grant_revive=False, events=None, summon_golden=False, grant_raid=0, placement=None):
     unit=card_by_id(summon_id)
     if not unit: return None
-    slot=summon_slot_for(team,source_index)
+    slot=next((i for i,u in enumerate(team[:7]) if u is None),None) if placement=="leftmost" else summon_slot_for(team,source_index)
     if slot is None:
         count_blocked_aegir_summon(unit,side,team,events)
         return None
     if summon_golden:
         base_attack=int(unit.get("attack",0) or 0); base_hp=int(unit.get("max_hp",1) or 1)
         unit=apply_golden_unit(unit); unit["attack"]=base_attack*2; unit["max_hp"]=base_hp*2
+    if grant_raid:
+        unit["raid"]={"hits":int(grant_raid)}
+        unit["mechanics"]=list(dict.fromkeys(unit.get("mechanics",[])+["raid"]))
     unit["current_hp"]=unit.get("max_hp",1)
     apply_round_aura_to_unit(unit,team,source)
     unit["summoned_by_phase"]=True
@@ -993,14 +1102,19 @@ def summon_unit_from_legacy(source, source_index, side, team, summon_id, grant_r
         mechs=list(unit.get("mechanics",[]))
         if "revive" not in mechs: mechs.append("revive")
         unit["mechanics"]=mechs
-    place_summon(unit,source,source_index,team)
+    if placement=="leftmost":
+        unit["battle_position"]=min((float(u.get("battle_position",i)) for i,u in enumerate(team[:7]) if u),default=0)-1
+    else:
+        place_summon(unit,source,source_index,team)
     team[slot]=unit
     if events is not None:
-        events.append({"type":"summon","side":side,"slot":slot+1,"from":source["name"],"from_slot":source_index+1,"unit":copy.deepcopy(unit),"consume_revive_slot":source_index+1})
+        events.append({"type":"summon","side":side,"slot":slot+1,"from":source["name"],"from_slot":source_index+1,"unit":copy.deepcopy(unit)})
     if events is not None: trigger_sea_summon_buff(unit,slot,side,team,events)
     return slot,unit
 
 def deal_friendly_bullet_damage(source, source_index, side, allies, foes, target_index, target, base, events, pending_deaths, record_cumulative=True):
+    if _logistics_active.get(): return
+    if not is_attack_target(target): return
     # Friendly fire never receives the source's bullet strength. Bullet strength
     # is added only when a friendly unit damages an enemy unit.
     dmg=int(base)
@@ -1070,7 +1184,9 @@ def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
             events.append({"type":"team_buff","side":side,"slot":ti+1,"from":unit["name"],"to":target["name"],"attack":target["attack"],"max_hp":target["max_hp"],"current_hp":target["current_hp"],"source_effect":"summon_buff"})
     elif legacy.get("type")=="summon":
         for _ in range(max(0,int(legacy.get("count",1)))):
-            summon_unit_from_legacy(unit,unit_index,side,allies,legacy.get("summon_id"),events=events)
+            summoned=summon_unit_from_legacy(unit,unit_index,side,allies,legacy.get("summon_id"),events=events)
+            if not summoned and legacy.get("summon_id")=="Mountain Snowdevil": break
+            trigger_summon_raid(summoned,side,allies,foes,events)
     elif legacy.get("type")=="team_permanent_bloodbattle":
         targets=[(i,u) for i,u in enumerate(allies) if can_receive_buff(u)]
         for ti,target in targets:
@@ -1093,7 +1209,7 @@ def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
                 base_damage=int(legacy.get("damage",0) or 0)
                 deal_friendly_bullet_damage(unit,unit_index,side,allies,foes,ti,target,base_damage,events,pending_deaths,record_cumulative=False)
                 if base_damage>0: cumulative_hits+=1
-            foe_targets=[(ti,target) for ti,target in battle_entries(foes) if target and target.get("current_hp",0)>0]
+            foe_targets=[(ti,target) for ti,target in battle_entries(foes) if is_attack_target(target) and target.get("current_hp",0)>0]
             if not foe_targets:
                 corpse=random_target(foes,include_dead=True)
                 foe_targets=[corpse] if corpse else []
@@ -1131,14 +1247,7 @@ def trigger_legacy_effect(unit, unit_index, side, allies, foes, events, legacy):
             register_round_aura(allies,legacy.get("attack",0),legacy.get("max_hp",legacy.get("hp",0)),legacy.get("bullet_strength",0),source=unit)
     elif legacy.get("type")=="summon_then_bullet":
         summoned=summon_unit_from_legacy(unit,unit_index,side,allies,legacy.get("summon_id"),bool(legacy.get("grant_revive")),events,bool(legacy.get("summon_golden")))
-        if summoned and legacy.get("consume_revive"):
-            unit["revive_consumed_by_summon"]=True
-        if summoned and summoned[1].get("raid"):
-            summoned_index,summoned_unit=summoned; raid=summoned_unit.get("raid") or {}
-            raid_hits=max(1,int(raid.get("hits",1) if isinstance(raid,dict) else raid))
-            for _ in range(raid_hits):
-                if allies[summoned_index] is not summoned_unit or summoned_unit.get("current_hp",0)<=0: break
-                if not perform_attack_action(summoned_unit,summoned_index,side,allies,foes,events,source_effect="raid"): break
+        trigger_summon_raid(summoned,side,allies,foes,events)
         batch_start=len(events)
         events.append({"type":"bullet_batch_start"})
         hits=int(legacy.get("hits",1)); base=int(legacy.get("damage",0))+int(unit.get("bullet_damage",0) or 0)
@@ -1186,6 +1295,7 @@ def friendly_logistics_trigger_count(team):
     )
 
 
+@logistics_phase
 def apply_logistics_effects(team, side, events, foes=None):
     trigger_count=friendly_logistics_trigger_count(team)
     for idx,u in enumerate(team):
@@ -1240,6 +1350,7 @@ def apply_logistics_effects(team, side, events, foes=None):
             events.append({"type":"logistics_buff","side":side,"slot":idx+1,"from":u["name"],"to":u["name"],"mechanic":"logistics","source_effect":"logistics","attack_gain":atk,"max_hp_gain":hp,"attack":u.get("attack",0),"max_hp":u.get("max_hp",1),"current_hp":u.get("current_hp",u.get("max_hp",1))})
 
 
+@logistics_phase
 def apply_temporary_logistics_effects(team, side, events):
     trigger_count=friendly_logistics_trigger_count(team)
     for idx,u in enumerate(team):
@@ -1250,14 +1361,22 @@ def apply_temporary_logistics_effects(team, side, events):
             apply_unit_buff(u,atk=atk,hp=hp,unit_index=idx,side=side,events=events,source_effect="temporary_logistics",team=team)
             events.append({"type":"temporary_logistics_buff","side":side,"slot":idx+1,"from":u["name"],"to":u["name"],"mechanic":"logistics","source_effect":"temporary_logistics","attack_gain":atk,"max_hp_gain":hp,"attack":u.get("attack",0),"max_hp":u.get("max_hp",1),"current_hp":u.get("current_hp",u.get("max_hp",1))})
 
-def apply_persistent_battle_gains(snapshot, events, start_index=0):
-    for event in events[start_index:]:
-        if event.get("side")!="left": continue
+def apply_persistent_battle_gains(snapshot, events, start_index=0, side="left"):
+    original_slots=[bool(u) for u in snapshot]
+    for event_index,event in enumerate(events):
+        if event.get("side")!=side: continue
+        # Stable event slots are reused by summons. Their gains must never be
+        # credited to the original preparation unit that previously held the slot.
+        kind=event.get("type")
+        replaced=int(event.get("to_slot" if kind=="assimilate" else "slot",0) or 0)-1
+        if kind in ("death","summon","revive","assimilate") and 0<=replaced<len(original_slots):
+            original_slots[replaced]=False
+        if event_index<start_index: continue
         source_effect=event.get("source_effect")
         if not (event.get("type")=="permanent_buff" or source_effect in ("initiative","permanent")):
             continue
         slot=int(event.get("slot",0) or 0)-1
-        if not 0<=slot<len(snapshot) or not snapshot[slot]: continue
+        if not 0<=slot<len(snapshot) or not snapshot[slot] or not original_slots[slot]: continue
         unit=snapshot[slot]
         attack_gain=int(event.get("attack_gain",0) or 0)
         hp_gain=int(event.get("max_hp_gain",0) or 0)
@@ -1270,10 +1389,113 @@ def apply_persistent_battle_gains(snapshot, events, start_index=0):
         if event.get("injury_growth_count") is not None: unit["injury_growth_count"]=int(event.get("injury_growth_count",0) or 0)
 
 
+def drain_waiting_summons(events):
+    # Deferred initiative summons wait behind the current attack/death/legacy chain.
+    queue=_waiting_summons.get()
+    if not queue or _effect_deaths.get() is not None or _draining_summons.get() or _summon_raid_depth.get() or _death_chain_depth.get(): return
+    token=_draining_summons.set(True)
+    try:
+        while True:
+            entry=next((e for e in queue if e["count"]>0 and summon_slot_for(e["team"],e["index"]) is not None),None)
+            if entry is None: break
+            entry["count"]-=1
+            summoned=summon_unit_from_legacy(entry["source"],entry["index"],entry["side"],entry["team"],entry["summon_id"],events=events,grant_raid=entry["raid_hits"],placement="leftmost")
+            trigger_summon_raid(summoned,entry["side"],entry["team"],entry["foes"],events)
+            queue[:]=[e for e in queue if e["count"]>0]
+    finally:
+        _draining_summons.reset(token)
+
+
+def trigger_summon_raid(summoned, side, allies, foes, events):
+    if not summoned or not summoned[1].get("raid"): return
+    idx,unit=summoned; raid=unit["raid"]
+    # A raid is a full nested attack, not deferred damage within the summoner's
+    # legacy. Finish its deaths, bloodbattle, legacies and revival before returning.
+    depth=_summon_raid_depth.set(_summon_raid_depth.get()+1)
+    token=_effect_deaths.set(None)
+    try:
+        for _ in range(max(1,int(raid.get("hits",1) if isinstance(raid,dict) else raid))):
+            if allies[idx] is not unit or unit.get("current_hp",0)<=0: break
+            if not perform_attack_action(unit,idx,side,allies,foes,events,source_effect="raid"): break
+    finally:
+        _effect_deaths.reset(token)
+        _summon_raid_depth.reset(depth)
+
+
+def record_charge_attack(side, team, events):
+    # A separate, battle-only before-collision counter; damage instances never enter here.
+    for idx,watcher in battle_entries(team):
+        if not watcher or watcher.get("current_hp",0)<=0 or watcher.get("_death_confirmed"): continue
+        effect=watcher.get("charge")
+        if not effect: continue
+        threshold=max(1,int(effect.get("threshold",4)))
+        total=int(watcher.get("charge_count",0))+1
+        triggers,watcher["charge_count"]=divmod(total,threshold)
+        events.append(dict(type="charge_counter",side=side,slot=idx+1,count=watcher["charge_count"],threshold=threshold,**{"from":watcher["name"]}))
+        if not triggers: continue
+        if effect.get("type")=="team_faction_permanent_buff":
+            for _ in range(triggers):
+                for ti,target in battle_entries(team):
+                    if not can_receive_buff(target): continue
+                    amount=int(effect.get("amount",3))
+                    grant_before_attack_buff(watcher,idx,target,ti,side,team,events,amount,amount)
+                    if belongs_to_faction(target,effect.get("faction","谢拉格")):
+                        extra=int(effect.get("extra",1))
+                        grant_before_attack_buff(watcher,idx,target,ti,side,team,events,extra,extra)
+            continue
+        if effect.get("type")=="self_permanent_buff":
+            for _ in range(triggers):
+                amount=int(effect.get("amount",2))
+                grant_before_attack_buff(watcher,idx,watcher,idx,side,team,events,amount,amount)
+            continue
+        pool=[c for c in cards() if c.get("card_type")=="unit" and not c.get("summon_only") and not c.get("cannot_gain") and belongs_to_faction(c,effect.get("faction","谢拉格"))]
+        for _ in range(triggers*int(effect.get("count",1))):
+            if not pool: break
+            card=copy.deepcopy(random.choice(pool))
+            events.append(dict(type="gain_card",side=side,from_slot=idx+1,**{"from":watcher["name"]},card=card,card_id=card["id"],card_name=card["name"],source_effect="charge"))
+
+
+def crossing_blocker(attacker, mine, target, foes):
+    # Match the centered, spatially sorted live rows, including inserted summons.
+    def positions(team):
+        live=[(i,u) for i,u in battle_entries(team) if u and u.get("current_hp",0)>0 and not u.get("offboard")]
+        return [(i,u,rank-(len(live)-1)/2) for rank,(i,u) in enumerate(live)]
+    own=positions(mine);enemy=positions(foes)
+    start=next((x for i,u,x in own if u is attacker or (attacker.get("offboard") and i==attacker.get("offboard_anchor"))),0)
+    end=next((x for i,u,x in enemy if u is target or (target.get("offboard") and i==target.get("offboard_anchor"))),0)
+    if start==end: return None
+    choices=[(i,u,x) for i,u,x in enemy if u is not target and (u.get("block") or "block" in u.get("mechanics",[])) and min(start,end)<=x<=max(start,end)]
+    if not choices: return None
+    i,u,_=min(choices,key=lambda p:abs(p[2]-start))
+    return i,u
+
+
+def grant_before_attack_buff(source, source_index, target, target_index, side, team, events, atk, hp):
+    apply_unit_buff(target,atk,hp,unit_index=target_index,side=side,events=events,source_effect="before_attack",team=team)
+    events.append(dict(type="permanent_buff",side=side,slot=target_index+1,from_slot=source_index+1,**{"from":source["name"],"to":target["name"]},source_effect="before_attack",attack_gain=atk,max_hp_gain=hp,attack=target["attack"],max_hp=target["max_hp"],current_hp=target["current_hp"]))
+
+
 def apply_before_attack(attacker, attacker_index, side, team, events):
+    for amount in (_snow_vanguard.get() or {}).get(side,[]):
+        grant_before_attack_buff({"name":"雪境先驱"},attacker_index,attacker,attacker_index,side,team,events,amount,amount)
+    # Each living Steward contributes separately, including to itself and raid/block hits.
+    for source_index,source in battle_entries(team):
+        if not source or source.get("current_hp",0)<=0 or source.get("_death_confirmed"): continue
+        ally_effect=source.get("ally_before_attack") or {}
+        if ally_effect:
+            grant_before_attack_buff(source,source_index,attacker,attacker_index,side,team,events,int(ally_effect.get("attack",0)),int(ally_effect.get("max_hp",0)))
     effect=attacker.get("before_attack") or {}
     if not effect: return
     for _ in range(max(1,int(effect.get("repetitions",1) or 1))):
+        if effect.get("type")=="self_permanent_buff":
+            atk=int(effect.get("attack",effect.get("amount",1)));hp=int(effect.get("max_hp",effect.get("amount",1)))
+            grant_before_attack_buff(attacker,attacker_index,attacker,attacker_index,side,team,events,atk,hp)
+            limit=int(effect.get("shield_limit",0));used=int(attacker.get("before_attack_shield_count",0))
+            if used<limit:
+                attacker["before_attack_shield_count"]=used+1
+                attacker["shield"]=True
+                attacker["mechanics"]=list(dict.fromkeys(attacker.get("mechanics",[])+["shield"]))
+                events.append(dict(type="grant_shield",side=side,slot=attacker_index+1,**{"from":attacker["name"]},source_effect="before_attack",shield_count=used+1,shield_limit=limit))
         if effect.get("type")=="team_buff":
             apply_team_buff(attacker,attacker_index,side,team,effect,events,source_effect="permanent")
 
@@ -1308,7 +1530,6 @@ def deal_cleave_damage(source, source_index, side, allies, foes, target_index, t
     if dead and foes[target_index] is target:
         queue_pending_death(pending_deaths,target,target_index,target_side,foes,allies)
 
-@atomic_effect
 def perform_attack_action(attacker, idx, side, mine, foes, events, round_number=1, source_effect=None):
     # Each strike settles fully before retargeting. A revived copy cannot inherit the second strike.
     combo = source_effect != "raid" and bool(attacker.get("combo") or "combo" in attacker.get("mechanics", []))
@@ -1317,25 +1538,85 @@ def perform_attack_action(attacker, idx, side, mine, foes, events, round_number=
         if idx >= len(mine) or mine[idx] is not attacker or attacker.get("current_hp", 0) <= 0: break
         if not any(u and u.get("current_hp", 0) > 0 for u in foes): break
         if combo: events.append({"type":"combo_strike", "side":side, "from_slot":idx+1, "from":attacker["name"], "strike":strike+1})
-        if not perform_single_attack(attacker, idx, side, mine, foes, events, round_number, source_effect): break
+        token=_effect_deaths.set(None) if combo else None
+        try:
+            hit=perform_attack_strike(attacker,idx,side,mine,foes,events,round_number,source_effect)
+        finally:
+            if token is not None: _effect_deaths.reset(token)
+        if not hit: break
         performed = True
     return performed
 
 
-def perform_single_attack(attacker, idx, side, mine, foes, events, round_number=1, source_effect=None):
+@atomic_effect
+def perform_attack_strike(attacker, idx, side, mine, foes, events, round_number=1, source_effect=None):
+    return perform_single_attack(attacker,idx,side,mine,foes,events,round_number,source_effect)
+
+
+@atomic_effect
+def perform_assist_attack(unit, index, side, team, foes, events, target_index, target, round_number):
+    return perform_single_attack(unit,index,side,team,foes,events,round_number,"raid",(target_index,target))
+
+
+def summon_attack_assists(source, index, side, team, foes, target_index, target, events, round_number):
+    # Extra event slots are temporary actors, never available board spaces.
+    team.extend([None]*max(0,7-len(team)))
+    depth=_summon_raid_depth.set(_summon_raid_depth.get()+1)
+    token=_effect_deaths.set(None)
+    try:
+        for _ in range(int(source.get("before_attack_assist",0))):
+            if foes[target_index] is not target or target.get("current_hp",0)<=0 or target.get("_death_confirmed"): break
+            if team[index] is not source or source.get("current_hp",0)<=0: break
+            assist=source.get("attack_assist") or {}
+            unit=card_by_id(assist.get("summon_id","Mountain Snowdevil"))
+            if not unit: break
+            if assist.get("inherit_attack"): unit["attack"]=int(source.get("attack",0))
+            if assist.get("credit_bloodbattle"): unit["_bloodbattle_owner"]=[index,id(source)]
+            slot=len(team);unit.update(current_hp=unit["max_hp"],offboard=True,battle_position=source.get("battle_position",index),offboard_anchor=index)
+            team.append(unit)
+            events.append(dict(type="offboard_summon",side=side,slot=slot+1,from_slot=index+1,**{"from":source["name"]},unit=copy.deepcopy(unit)))
+            try:
+                apply_round_aura_to_unit(unit,team,source)
+                trigger_sea_summon_buff(unit,slot,side,team,events)
+                perform_assist_attack(unit,slot,side,team,foes,events,target_index,target,round_number)
+            finally:
+                team[slot]=None
+                events.append(dict(type="offboard_leave",side=side,slot=slot+1))
+                while len(team)>7 and team[-1] is None: team.pop()
+    finally:
+        _effect_deaths.reset(token)
+        _summon_raid_depth.reset(depth)
+
+
+def perform_single_attack(attacker, idx, side, mine, foes, events, round_number=1, source_effect=None, forced_target=None):
     if idx>=len(mine) or mine[idx] is not attacker or attacker.get("current_hp",0)<=0: return False
     if not any(u and u.get("current_hp",0)>0 for u in foes): return False
     apply_before_attack(attacker,idx,side,mine,events)
-    pair=choose_target(foes)
+    pair=forced_target or choose_target(foes)
     if not pair: return False
-    ti,target=pair; base=bullet_base_damage(attacker); target_side="right" if side=="left" else "left"
-    if base and bullet_condition_met(attacker,mine,foes,round_number):
+    ti,target=pair
+    if not is_attack_target(target) and source_effect!="block": return False
+    base=bullet_base_damage(attacker); target_side="right" if side=="left" else "left"
+    if source_effect!="block" and base and bullet_condition_met(attacker,mine,foes,round_number):
         deal_bullet_damage(attacker,idx,side,mine,foes,ti,target,base,events,source_effect=source_effect)
         return True
+    record_charge_attack(side,mine,events)
+    if attacker.get("before_attack_assist"):
+        summon_attack_assists(attacker,idx,side,mine,foes,ti,target,events,round_number)
+        if mine[idx] is not attacker or attacker.get("current_hp",0)<=0: return False
+        if foes[ti] is not target or target.get("current_hp",0)<=0: return True
     trigger_opponent_attack_reactions(attacker,idx,side,mine,foes,events)
     if mine[idx] is not attacker or attacker.get("current_hp",0)<=0:
         events.append({"type":"collision_cancelled","side":side,"from":attacker["name"],"from_slot":idx+1,"to":target["name"],"to_slot":ti+1,"target_side":target_side,"reason":"opponent_attack_reaction_death","source_effect":source_effect})
         return False
+    blocker=crossing_blocker(attacker,mine,target,foes) if source_effect!="block" else None
+    if blocker:
+        bi,unit=blocker
+        events.append(dict(type="block_intercept",side=target_side,from_slot=bi+1,to_slot=idx+1,target_side=side,**{"from":unit["name"],"to":attacker["name"]},original_target_slot=ti+1))
+        # Reverse initiative: the blocker owns the hit, cleave and bloodbattle credit.
+        # The interrupted attacker only deals counter damage, with no recursive interception.
+        perform_single_attack(unit,bi,target_side,foes,mine,events,round_number,"block",(idx,attacker))
+        return True
     if has_guardian(target):
         guardian=target.get("guardian") or {}
         if not isinstance(guardian,dict): guardian={"type":"bullet_damage","damage":2,"hits":1}
@@ -1386,18 +1667,24 @@ def perform_single_attack(attacker, idx, side, mine, foes, events, round_number=
     return True
 
 
-def tavern_battle(left,right,round_number=1,shop_level=1,aegir_attack_bonus=0,life_tower_effects=None):
-    tower_token=_life_tower_effects.set({"left":life_tower_effects or [],"right":[]})
-    token=_aegir_game_attack.set({"left":int(aegir_attack_bonus),"right":0})
+def tavern_battle(left,right,round_number=1,shop_level=1,aegir_attack_bonus=0,life_tower_effects=None,snow_vanguard_effects=None, right_options=None):
+    right_options=right_options or {}
+    snow_token=_snow_vanguard.set({"left":[max(0,int(v)) for v in (snow_vanguard_effects or [])],"right":right_options.get("snow_vanguard_effects",[])})
+    summon_token=_waiting_summons.set([])
+    tower_token=_life_tower_effects.set({"left":life_tower_effects or [],"right":right_options.get("life_tower_effects",[])})
+    token=_aegir_game_attack.set({"left":int(aegir_attack_bonus),"right":int(right_options.get("aegir_attack_bonus",0))})
     try:
-        result=_tavern_battle(left,right,round_number,shop_level)
+        result=_tavern_battle(left,right,round_number,shop_level,right_options.get("shop_level",shop_level))
         result["aegir_attack_bonus"]=_aegir_game_attack.get()["left"]
+        result["right_aegir_attack_bonus"]=_aegir_game_attack.get()["right"]
         return result
     finally:
         _aegir_game_attack.reset(token)
         _life_tower_effects.reset(tower_token)
+        _waiting_summons.reset(summon_token)
+        _snow_vanguard.reset(snow_token)
 
-def _tavern_battle(left,right,round_number=1,shop_level=1):
+def _tavern_battle(left,right,round_number=1,shop_level=1,right_shop_level=None):
     left=[dict(u,current_hp=u["max_hp"]) if u else None for u in left[:7]]; right=[dict(u,current_hp=u["max_hp"]) if u else None for u in right[:7]]
     left += [None]*(7-len(left)); right += [None]*(7-len(right))
     for team in (left,right):
@@ -1405,18 +1692,21 @@ def _tavern_battle(left,right,round_number=1,shop_level=1):
             if unit:
                 unit["battle_position"]=index
                 unit.pop("_summon_tail",None)
-                unit["battle_shop_level"]=max(1,min(MAX_SHOP_LEVEL,int(shop_level or 1)))
+                unit["battle_shop_level"]=max(1,min(MAX_SHOP_LEVEL,int((shop_level if team is left else right_shop_level or shop_level) or 1)))
                 unit.pop("opponent_attack_trigger_count",None)
                 unit.pop("enemy_death_copy_count",None)
+                unit.pop("charge_count",None)
+                unit.pop("before_attack_shield_count",None)
                 unit.pop("enemy_death_growth_count",None)
     turn=first_striker(left,right); cursor={"left":-1,"right":-1}; events=[]
     apply_logistics_effects(left,"left",events,right); apply_logistics_effects(right,"right",events,left)
     # Preserve a snapshot before temporary battle effects or deaths. The player
     # receives these permanent logistics gains even when the unit later dies.
     persistent_left=copy.deepcopy(left)
+    persistent_right=copy.deepcopy(right)
     for event in events:
-        if event.get('side')=='left' and event.get('source_effect')=='aura_bloodbattle':
-            saved=persistent_left[event['slot']-1]
+        if event.get('source_effect')=='aura_bloodbattle':
+            saved=(persistent_left if event.get('side')=='left' else persistent_right)[event['slot']-1]
             if saved:
                 saved['attack']-=event['attack_gain'];saved['max_hp']-=event['max_hp_gain']
     persistent_event_start=len(events)
@@ -1424,7 +1714,9 @@ def _tavern_battle(left,right,round_number=1,shop_level=1):
     apply_battle_start_effects(left,"left",events); apply_battle_start_effects(right,"right",events)
     resolve_precombat_phase("initiative",left,right,turn,events)
     def living(team): return [(i,u) for i,u in battle_entries(team) if u and u["current_hp"]>0]
-    while living(left) and living(right):
+    attacks=0
+    while living(left) and living(right) and attacks<1000:
+        attacks+=1
         mine,foes=(left,right) if turn=="left" else (right,left)
         choices=living(mine); idx,attacker=next(((i,u) for i,u in choices if u.get("battle_position",i)>cursor[turn]),choices[0]); cursor[turn]=attacker.get("battle_position",idx)
         perform_attack_action(attacker,idx,turn,mine,foes,events,round_number)
@@ -1433,16 +1725,17 @@ def _tavern_battle(left,right,round_number=1,shop_level=1):
     winner="left" if left_alive and not right_alive else ("right" if right_alive and not left_alive else "draw")
     remaining_stars=sum(u.get("stars",1) for _,u in right_alive); loss_damage=0 if winner!="right" else (min(remaining_stars,15) if round_number<10 else remaining_stars)
     apply_persistent_battle_gains(persistent_left,events,persistent_event_start)
+    apply_persistent_battle_gains(persistent_right,events,persistent_event_start,"right")
     logistics_gold=sum(int(e.get("amount",0) or 0) for e in events if e.get("type")=="gain_gold" and e.get("side")=="left")
     # Assimilated legacies belong only to this battle copy. Never expose them
     # through the persistent snapshot used to rebuild the preparation board.
-    for saved in persistent_left:
+    for saved in persistent_left+persistent_right:
         if saved:
             saved.pop("inherited_legacies",None)
             saved.pop("temporary_bloodbattle",None)
             if not saved.get("legacy"):
                 saved["mechanics"]=[m for m in saved.get("mechanics",[]) if m!="legacy"]
-    return {"winner":winner,"events":events,"left":left,"right":right,"persistent_left":persistent_left,"remaining_stars":remaining_stars,"loss_damage":loss_damage,"logistics_gold":logistics_gold}
+    return {"winner":winner,"events":events,"left":left,"right":right,"persistent_left":persistent_left,"persistent_right":persistent_right,"remaining_stars":remaining_stars,"loss_damage":loss_damage,"logistics_gold":logistics_gold}
 
 def settle_battle(result, round_number, player_id="local"):
     with db() as con:
@@ -1486,6 +1779,230 @@ def enemy_board(round_number, shop_level=1):
         card["current_hp"]=card["max_hp"]; board[i]=card
     return board
 
+# Eight-seat matches persist independently of the tutorial/legacy sandbox.
+_arena_lock=threading.RLock()
+
+def shared_training(data=None):
+    def valid_weights(value):
+        return isinstance(value,list) and len(value)==6 and all(type(v) in (int,float) and .25<=v<=3 for v in value)
+    with db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        con.execute('CREATE TABLE IF NOT EXISTS shared_training (id INTEGER PRIMARY KEY, data TEXT NOT NULL)')
+        row=con.execute('SELECT data FROM shared_training WHERE id=1').fetchone()
+        state=json.loads(row[0]) if row else copy.deepcopy(release_defaults().get('training') or dict(revision=0,checkpoint=None,policy=None))
+        if not row:con.execute('INSERT INTO shared_training VALUES (1,?)',(json.dumps(state,ensure_ascii=False),))
+        if data is not None:
+            mode=data.get('mode')
+            if mode not in ('import','save','apply'):raise ValueError('未知训练操作')
+            if mode!='import' and data.get('revision')!=state['revision']:raise ValueError('服务器训练结果已被其他浏览器更新。本次结果保留在本地，请刷新训练页面后继续。')
+            cp=data.get('checkpoint')
+            if mode in ('save','import') and cp is not None:
+                if not isinstance(cp,dict) or not valid_weights(cp.get('weights')) or type(cp.get('generation')) is not int or cp['generation']<1:raise ValueError('训练记录不合法')
+                if not isinstance(cp.get('history'),list) or len(cp['history'])>100 or len(json.dumps(cp))>5000000:raise ValueError('训练记录过大或格式不正确')
+                if mode=='save' or state['checkpoint'] is None:state['checkpoint']=cp
+            if mode=='apply':
+                if not state['checkpoint']:raise ValueError('尚无可应用的训练结果')
+                state['policy']=dict(version=1,weights=state['checkpoint']['weights'],generation=state['checkpoint']['generation'])
+            if mode=='import' and state['policy'] is None and data.get('policy') is not None:
+                policy=data['policy']
+                if not isinstance(policy,dict) or not valid_weights(policy.get('weights')):raise ValueError('AI 参数不合法')
+                state['policy']=dict(version=1,weights=policy['weights'])
+            if mode=='save' and cp is None:raise ValueError('缺少训练记录')
+            state['revision']+=1
+            con.execute('INSERT OR REPLACE INTO shared_training VALUES (1,?)',(json.dumps(state,ensure_ascii=False),))
+        return state
+
+def shared_guides(data=None):
+    with db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        con.execute('CREATE TABLE IF NOT EXISTS shared_guides (id TEXT PRIMARY KEY, data TEXT NOT NULL, revision INTEGER NOT NULL)')
+        con.execute('CREATE TABLE IF NOT EXISTS deleted_guides (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
+        con.execute('CREATE TABLE IF NOT EXISTS guide_metadata (id INTEGER PRIMARY KEY, token TEXT NOT NULL)')
+        first=con.execute('SELECT 1 FROM guide_metadata WHERE id=1').fetchone() is None
+        con.execute('INSERT OR IGNORE INTO guide_metadata VALUES (1,?)',(uuid.uuid4().hex,))
+        if first:
+            for g in release_defaults().get('guides',[]):
+                value={k:g.get(k,'') for k in ('faction','name','note','core','transition')}
+                con.execute('INSERT OR IGNORE INTO shared_guides VALUES (?,?,?)',(g['id'],json.dumps(value,ensure_ascii=False,sort_keys=True),g.get('revision',1)))
+        token=con.execute('SELECT token FROM guide_metadata WHERE id=1').fetchone()[0]
+        if data is not None:
+            importing=data.get('mode')=='import'
+            if data.get('mode')=='delete':
+                gid=data.get('id')
+                old=con.execute('SELECT data,revision FROM shared_guides WHERE id=?',(gid,)).fetchone()
+                if not old:raise ValueError('该阵容已被删除，请重新打开列表')
+                if data.get('revision')!=old[1]:raise ValueError('该阵容已被修改，请重新打开列表后再删除')
+                con.execute('INSERT OR REPLACE INTO deleted_guides VALUES (?,?)',(gid,old[0]))
+                con.execute('DELETE FROM shared_guides WHERE id=?',(gid,))
+                incoming=[]
+            else:incoming=data.get('guides') if importing else [data.get('guide')]
+            if not isinstance(incoming,list) or len(incoming)>1000:raise ValueError('打法数据不合法')
+            for g in incoming:
+                if not isinstance(g,dict):raise ValueError('打法数据不合法')
+                if g.get('faction') not in ['拉特兰','炎','维多利亚','阿戈尔','谢拉格','其他']:raise ValueError('未知阵营')
+                if not isinstance(g.get('name'),str) or not g['name'].strip() or len(g['name'])>40:raise ValueError('打法名称需 1–40 字')
+                if not isinstance(g.get('note',''),str) or len(g.get('note',''))>1200:raise ValueError('说明过长')
+                for field,limit in [('core',7),('transition',12)]:
+                    if not isinstance(g.get(field),list) or len(g[field])>limit or any(not isinstance(x,str) or len(x)>150 for x in g[field]):raise ValueError('棋子列表不合法')
+                value={k:g.get(k,'') for k in ('faction','name','note','core','transition')}
+                raw=json.dumps(value,ensure_ascii=False,sort_keys=True)
+                gid=str(g.get('id') or uuid.uuid4().hex)[:150]
+                old=con.execute('SELECT data,revision FROM shared_guides WHERE id=?',(gid,)).fetchone()
+                deleted=con.execute('SELECT 1 FROM deleted_guides WHERE id=? OR data=?',(gid,raw)).fetchone()
+                if importing and deleted:continue
+                if not importing and con.execute('SELECT 1 FROM deleted_guides WHERE id=?',(gid,)).fetchone():raise ValueError('该阵容已被删除，不能保存旧版本；请新增阵容')
+                if importing:
+                    if con.execute('SELECT 1 FROM shared_guides WHERE data=?',(raw,)).fetchone():continue
+                    if old:gid='import-'+uuid.uuid4().hex;old=None
+                elif old and g.get('revision')!=old[1]:
+                    raise ValueError('此打法已被其他浏览器修改，请关闭后重新打开，再编辑保存；本次输入仍保留。')
+                revision=old[1]+1 if old else 1
+                con.execute('INSERT INTO shared_guides VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,revision=excluded.revision',(gid,raw,revision))
+        return dict(token=token,initialized=bool(con.execute('SELECT 1 FROM shared_guides UNION ALL SELECT 1 FROM deleted_guides LIMIT 1').fetchone()),guides=[dict(json.loads(row[1]),id=row[0],revision=row[2]) for row in con.execute('SELECT id,data,revision FROM shared_guides ORDER BY rowid')])
+
+def arena_room(player_id):
+    with db() as con:
+        row=con.execute("SELECT r.data FROM arena_rooms r JOIN arena_members m ON m.owner=r.owner WHERE m.player_id=?",(player_id,)).fetchone()
+    if not row: raise ValueError("对局不存在，请开始新游戏")
+    return json.loads(row[0])
+
+def arena_save(room):
+    with db() as con:
+        con.execute("INSERT OR REPLACE INTO arena_rooms(owner,data) VALUES(?,?)",(room['owner'],json.dumps(room,ensure_ascii=False)))
+
+def arena_public(room):
+    seats=sorted(room['seats'],key=lambda p:(p.get('rank') is not None,-p['health'],p['number']))
+    if room['finished']: seats=sorted(room['seats'],key=lambda p:p['rank'])
+    opponents={a:b for pair in room.get('next_pairs',[]) for a,b in (pair,pair[::-1])}
+    return dict(round=room['round'],finished=room['finished'],seats=[dict({k:copy.deepcopy(p.get(k)) for k in ('id','number','name','health','rank','snapshot','snapshot_round')},shop_level=player(p['id'])['shop_level'],opponent_id=opponents.get(p['id'])) for p in seats])
+
+def arena_start(owner,nickname,training=False):
+    with _arena_lock:
+        nickname=str(nickname or '').strip()[:20]
+        if not nickname: raise ValueError("请输入昵称")
+        with db() as con:
+            previous=con.execute("SELECT data FROM arena_rooms WHERE owner=?",(owner,)).fetchone()
+            cleanup_training=bool(previous and json.loads(previous[0]).get('training'))
+            old=[r[0] for r in con.execute("SELECT player_id FROM arena_members WHERE owner=?",(owner,))]
+            for pid in old:
+                con.execute("DELETE FROM shop_purchases WHERE player_id=?",(pid,))
+                if cleanup_training:con.execute("DELETE FROM players WHERE id=?",(pid,))
+            con.execute("DELETE FROM arena_members WHERE owner=?",(owner,))
+        match_id=uuid.uuid4().hex
+        seats=[]
+        for n in range(8):
+            pid=owner if n==0 else f"ai-{match_id}-{n}"
+            reset_player(pid)
+            with db() as con: con.execute("INSERT OR REPLACE INTO arena_members(player_id,owner) VALUES(?,?)",(pid,owner))
+            seats.append(dict(id=pid,number=n,name=nickname if n==0 else f"AI {n}",health=50,rank=None,snapshot=[],snapshot_round=0,prepared=None))
+        room=dict(owner=owner,training=bool(training),round=1,seats=seats,encounters={},last_pairs=[],finished=False,results={},resolved_round=0)
+        room['next_pairs']=arena_pairings(room)
+        arena_save(room)
+        return dict(lobby=arena_public(room),player=player(owner))
+
+def arena_pairings(room):
+    living=[p['id'] for p in room['seats'] if p['rank'] is None]
+    dead=[p for p in room['seats'] if p['rank'] is not None]
+    if len(living)%2 and dead: living.append(min(dead,key=lambda p:p['rank'])['id'])
+    random.shuffle(living)
+    def cost(a,b):
+        key='|'.join(sorted((a,b)))
+        return room['encounters'].get(key,0)*100+(1 if key in room['last_pairs'] else 0)
+    def solve(ids):
+        if not ids:return 0,[]
+        a=ids[0];best=None
+        for i in range(1,len(ids)):
+            score,pairs=solve(ids[1:i]+ids[i+1:]);score+=cost(a,ids[i])
+            if best is None or score<best[0]:best=(score,[(a,ids[i])]+pairs)
+        return best
+    return solve(living)[1]
+
+def arena_submit(pid,payload):
+    with _arena_lock:
+        room=arena_room(pid)
+        if room['finished'] or int(payload.get('round',0))!=room['round']:raise ValueError("对局回合已变化")
+        seat=next(p for p in room['seats'] if p['id']==pid)
+        if seat['rank'] is not None:raise ValueError("已淘汰的玩家不能继续经营")
+        state=copy.deepcopy(payload)
+        if len(state.get('board',[]))>7 or len(state.get('bench',[]))>12:raise ValueError("棋盘或手牌超出容量")
+        seat['prepared']=state;arena_save(room)
+        return {'ok':True}
+
+def arena_flip_result(result):
+    result=copy.deepcopy(result)
+    result['left'],result['right']=result['right'],result['left']
+    result['persistent_left'],result['persistent_right']=result['persistent_right'],result['persistent_left']
+    result['winner']={'left':'right','right':'left','draw':'draw'}[result['winner']]
+    result['aegir_attack_bonus'],result['right_aegir_attack_bonus']=result['right_aegir_attack_bonus'],result['aegir_attack_bonus']
+    for event in result['events']:
+        for key in ('side','target_side','source_side'):
+            if event.get(key) in ('left','right'):event[key]='right' if event[key]=='left' else 'left'
+    return result
+
+def arena_restore(before,result):
+    restored=copy.deepcopy(before)
+    for i,unit in enumerate(restored):
+        if not unit:continue
+        saved=result['persistent_left'][i]
+        if saved and saved['id']==unit['id']:
+            for key in ('attack','max_hp','bullet_strength','bullet_damage','injury_growth_count'):
+                if key in saved:unit[key]=saved[key]
+        after=result['left'][i]
+        if after and after['id']==unit['id']:
+            for key in ('cumulative_damage_count','mostima_damage_count','injury_growth_count'):
+                if key in after:unit[key]=after[key]
+        unit['current_hp']=unit['max_hp']
+    return restored
+
+def arena_resolve(owner,round_number):
+    with _arena_lock, db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        token=_arena_connection.set(con)
+        try:
+            room=arena_room(owner)
+            if room['owner']!=owner:raise ValueError("只有主玩家可推进对局")
+            if room['resolved_round']==round_number:return dict(lobby=arena_public(room),results=room['results'])
+            if room['finished'] or room['round']!=round_number:raise ValueError("回合不匹配")
+            if any(p['prepared'] is None for p in room['seats'] if p['rank'] is None):raise ValueError("仍有玩家未完成备战")
+            by_id={p['id']:p for p in room['seats']};results={};pairs=room.get('next_pairs') or arena_pairings(room);last=[]
+            living_count=sum(p['rank'] is None and p['health']>0 for p in room['seats'])
+            for a,b in pairs:
+                x,y=by_id[a],by_id[b]
+                px=x['prepared'] if x['rank'] is None else x['ghost_state']
+                py=y['prepared'] if y['rank'] is None else y['ghost_state']
+                sx,sy=player(a),player(b)
+                result=tavern_battle(copy.deepcopy(px.get('board',[])),copy.deepcopy(py.get('board',[])),round_number,sx['shop_level'],px.get('aegir_attack_bonus',0),px.get('life_tower_effects',[]),px.get('snow_vanguard_effects',[]),dict(py,shop_level=sy['shop_level']))
+                for seat,prep,res,opponent in ((x,px,result,y),(y,py,arena_flip_result(result),x)):
+                    if seat['rank'] is not None:continue
+                    stars=sum(u.get('stars',1) for u in res['right'] if u and u.get('current_hp',0)>0)
+                    raw_damage=stars+player(opponent['id'])['shop_level']
+                    damage=(min(raw_damage,15) if living_count>4 else raw_damage) if res['winner']=='right' else 0
+                    state=player(seat['id']);income=round_income(round_number)
+                    earned=sum(int(e.get('amount',0)) for e in res['events'] if e.get('side')=='left' and e.get('type')=='gain_gold')
+                    wagers=int(prep.get('battle_wagers',0))*(3 if res['winner']=='left' else 1 if res['winner']=='draw' else 0)
+                    health=state['health']-damage
+                    con.execute('UPDATE players SET health=?,gold=gold+?,round=?,shop_discount=shop_discount+?,shop_rounds=shop_rounds+1,total_gold_earned=total_gold_earned+? WHERE id=?',(health,income+earned+wagers,round_number+1,round_upgrade_discount(state['shop_level'],state['shop_rounds']),income+earned+wagers,seat['id']))
+                    res=dict(res,loss_damage=damage,logistics_gold=earned,opponent_name=opponent['name'],opponent_board=copy.deepcopy((py if seat is x else px).get('board',[])),**player(seat['id']))
+                    seat['health']=health;seat['snapshot']=arena_restore(prep.get('board',[]),res);seat['snapshot_round']=round_number
+                    seat['ghost_state']=dict(prep,board=copy.deepcopy(seat['snapshot']),aegir_attack_bonus=res['aegir_attack_bonus'])
+                    results[seat['id']]=res
+                key='|'.join(sorted((a,b)));room['encounters'][key]=room['encounters'].get(key,0)+1;last.append(key)
+            dying=sorted([p for p in room['seats'] if p['rank'] is None and p['health']<=0],key=lambda p:(-p['health'],p['number']))
+            alive=[p for p in room['seats'] if p['rank'] is None and p['health']>0]
+            for i,seat in enumerate(dying):
+                seat['rank']=len(alive)+i+1
+                # Purchased physical copies return when their owner is eliminated.
+                con.execute('UPDATE shop_purchases SET returned=1 WHERE player_id=?',(seat['id'],))
+            room['finished']=(not room.get('training') and by_id[owner]['health']<=0) or len(alive)<=1
+            if room['finished']:
+                for i,seat in enumerate(sorted(alive,key=lambda p:(-p['health'],p['number']))):seat['rank']=i+1
+            room['round']+=1;room['resolved_round']=round_number;room['results']=results;room['last_pairs']=last
+            for p in room['seats']:p['prepared']=None
+            room['next_pairs']=[] if room['finished'] else arena_pairings(room)
+            arena_save(room)
+            return dict(lobby=arena_public(room),results=results)
+        finally:_arena_connection.reset(token)
+
 class Handler(SimpleHTTPRequestHandler):
     extensions_map={**SimpleHTTPRequestHandler.extensions_map,".html":"text/html; charset=utf-8",".css":"text/css; charset=utf-8",".js":"application/javascript; charset=utf-8"}
     # 立绘等静态图片体积大且不常变：允许本地缓存，只做 304 条件校验，
@@ -1506,17 +2023,38 @@ class Handler(SimpleHTTPRequestHandler):
         raw=json.dumps(payload,ensure_ascii=False).encode(); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(raw))); self.end_headers(); self.wfile.write(raw)
     def body(self): return json.loads(self.rfile.read(int(self.headers.get("Content-Length",0))) or b"{}")
     def player_id(self): return normalize_player_id(self.headers.get("X-Player-Id") or "local")
+    def can_edit(self):
+        return owner_can_edit(self.client_address[0],self.headers.get('Origin'),self.headers.get('Host'))
+    def shared_guides_response(self,data=None):
+        return dict(shared_guides(data),editable=self.can_edit())
     def do_GET(self):
         path=urlparse(self.path).path
+        if path=="/api/arena/state":
+            try:return self.json(arena_public(arena_room(self.player_id())))
+            except ValueError as e:return self.json({"error":str(e)},404)
+        if path=="/api/training": return self.json(shared_training())
+        if path=="/api/guides": return self.json(self.shared_guides_response())
         if path=="/api/cards": return self.json(cards())
         if path=="/api/shop": return self.json(shop(player_id=self.player_id()))
         if path=="/api/player": return self.json(player(self.player_id()))
+        if path=='/':self.path='/index.html'
+        resolved=Path(self.translate_path(self.path)).resolve()
+        if not resolved.is_relative_to(ROOT.resolve()) or any(part.startswith('.') or part in ('data','__pycache__') for part in resolved.relative_to(ROOT.resolve()).parts):
+            return self.json({'error':'禁止访问内部文件'},403)
+        if resolved.is_dir():return self.json({'error':'禁止列出目录'},403)
         return super().do_GET()
     def do_POST(self):
         path,data=urlparse(self.path).path,self.body()
         try:
+            if path=="/api/training":return self.json(shared_training(data))
+            if path=="/api/guides":
+                if not self.can_edit():return self.json({'error':'发布版推荐阵容只读'},403)
+                return self.json(self.shared_guides_response(data))
+            if path=="/api/arena/start":return self.json(arena_start(self.player_id(),data.get('nickname'),data.get('training') is True))
+            if path=="/api/arena/submit":return self.json(arena_submit(self.player_id(),data))
+            if path=="/api/arena/resolve":return self.json(arena_resolve(self.player_id(),int(data.get('round',0))))
             if path=="/api/buy": return self.json(buy_card(data["card_id"],self.player_id(),bool(data.get("bypass_shop_level"))))
-            if path=="/api/sell": return self.json(sell_unit(data["card_id"],self.player_id(),half=bool(data.get("half"))))
+            if path=="/api/sell": return self.json(sell_unit(data["card_id"],self.player_id(),half=bool(data.get("half")),pool_tokens=data.get("pool_tokens")))
             if path=="/api/refresh": return self.json(refresh_shop(self.player_id()))
             if path=="/api/gain_gold": return self.json(gain_gold(int(data.get("amount",1)),self.player_id()))
             if path=="/api/reduce_upgrade_cost": return self.json(reduce_upgrade_cost(int(data.get("amount",2)),self.player_id()))
@@ -1526,7 +2064,7 @@ class Handler(SimpleHTTPRequestHandler):
                 current=player(self.player_id())
                 return self.json(enemy_board(int(data.get("round",1)),current["shop_level"]))
             if path=="/api/battle":
-                rn=int(data.get("round",1)); current=player(self.player_id()); result=tavern_battle(data.get("left",[]),data.get("right",[]),rn,current["shop_level"],data.get("aegir_attack_bonus",0),data.get("life_tower_effects",[])); result.update(settle_battle(result,rn,self.player_id())); return self.json(result)
+                rn=int(data.get("round",1)); current=player(self.player_id()); result=tavern_battle(data.get("left",[]),data.get("right",[]),rn,current["shop_level"],data.get("aegir_attack_bonus",0),data.get("life_tower_effects",[]),data.get("snow_vanguard_effects",[])); result.update(settle_battle(result,rn,self.player_id())); return self.json(result)
             return self.json({"error":"not found"},404)
         except (KeyError,ValueError) as e: return self.json({"error":str(e)},400)
         except Exception:
@@ -1541,5 +2079,21 @@ def local_play_urls(port=PORT):
     except OSError: pass
     return urls
 
+class TavernHTTPServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer otherwise calls getfqdn() before listen(). Reverse DNS can
+        # stall on VPN/virtual adapters even though the local socket is valid.
+        TCPServer.server_bind(self)
+        self.server_name = "localhost"
+        self.server_port = self.server_address[1]
+
+
 if __name__=="__main__":
-    initialise_database(); print("Tavern mode play URLs:"); [print("  "+u) for u in local_play_urls()]; ThreadingHTTPServer(("0.0.0.0",PORT),Handler).serve_forever()
+    initialise_database()
+    with TavernHTTPServer(("0.0.0.0",PORT),Handler) as httpd:
+        # Print only after bind/listen succeeds; startup needs no DNS lookup.
+        print(f"Tavern server ready: http://127.0.0.1:{httpd.server_port}/", flush=True)
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass

@@ -1353,8 +1353,8 @@
   {
     "id": "Harold",
     "name": "哈洛德",
-    "tier": 3,
-    "faction": "维多利亚",
+    "tier": 5,
+    "faction": "谢拉格",
     "status": "ok",
     "source_file": "立绘_哈洛德_2.png",
     "url": "https://media.prts.wiki/5/54/%E7%AB%8B%E7%BB%98_%E5%93%88%E6%B4%9B%E5%BE%B7_2.png",
@@ -2120,5 +2120,385 @@
       480,
       720
     ]
+  },
+  {
+    "id": "Courier",
+    "name": "讯使",
+    "tier": 1,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_讯使_2.png",
+    "url": "https://media.prts.wiki/c/cf/%E7%AB%8B%E7%BB%98_%E8%AE%AF%E4%BD%BF_2.png",
+    "file": "讯使_精二.webp",
+    "thumb": "讯使_精二.webp",
+    "webp": "讯使_精二.webp",
+    "link": "讯使_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 103462,
+    "crop_box": [
+      338,
+      -39,
+      748,
+      575
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "Matterhorn",
+    "name": "角峰",
+    "tier": 1,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_角峰_2.png",
+    "url": "https://media.prts.wiki/4/47/%E7%AB%8B%E7%BB%98_%E8%A7%92%E5%B3%B0_2.png",
+    "file": "角峰_精二.webp",
+    "thumb": "角峰_精二.webp",
+    "webp": "角峰_精二.webp",
+    "link": "角峰_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 112918,
+    "crop_box": [
+      432,
+      468,
+      1061,
+      1412
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "Steward",
+    "name": "史都华德",
+    "tier": 2,
+    "faction": "谢拉格",
+    "status": "无精二，已用普通立绘",
+    "source_file": "立绘_史都华德_1.png",
+    "url": "https://media.prts.wiki/4/44/%E7%AB%8B%E7%BB%98_%E5%8F%B2%E9%83%BD%E5%8D%8E%E5%BE%B7_1.png",
+    "file": "史都华德_普通.webp",
+    "thumb": "史都华德_普通.webp",
+    "webp": "史都华德_普通.webp",
+    "link": "史都华德_普通.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 83032,
+    "crop_box": [
+      302,
+      -11,
+      742,
+      650
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "Snow Hunter",
+    "name": "雪猎",
+    "tier": 2,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_雪猎_2.png",
+    "url": "https://media.prts.wiki/7/74/%E7%AB%8B%E7%BB%98_%E9%9B%AA%E7%8C%8E_2.png",
+    "file": "雪猎_精二.webp",
+    "thumb": "雪猎_精二.webp",
+    "webp": "雪猎_精二.webp",
+    "link": "雪猎_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 118446,
+    "crop_box": [
+      1126,
+      714,
+      1894,
+      1866
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "SilverAsh",
+    "name": "银灰",
+    "tier": 2,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_银灰_2.png",
+    "url": "https://media.prts.wiki/5/5f/%E7%AB%8B%E7%BB%98_%E9%93%B6%E7%81%B0_2.png",
+    "file": "银灰_精二.webp",
+    "thumb": "银灰_精二.webp",
+    "webp": "银灰_精二.webp",
+    "link": "银灰_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 155140,
+    "crop_box": [
+      748,
+      163,
+      1505,
+      1300
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "Aurora",
+    "name": "极光",
+    "tier": 2,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_极光_2.png",
+    "url": "https://media.prts.wiki/d/da/%E7%AB%8B%E7%BB%98_%E6%9E%81%E5%85%89_2.png",
+    "file": "极光_精二.webp",
+    "thumb": "极光_精二.webp",
+    "webp": "极光_精二.webp",
+    "link": "极光_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 124096,
+    "crop_box": [
+      686,
+      521,
+      1382,
+      1565
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "Leto",
+    "name": "烈夏",
+    "tier": 3,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_烈夏_2.png",
+    "url": "https://media.prts.wiki/a/a6/%E7%AB%8B%E7%BB%98_%E7%83%88%E5%A4%8F_2.png",
+    "file": "烈夏_精二.webp",
+    "thumb": "烈夏_精二.webp",
+    "webp": "烈夏_精二.webp",
+    "link": "烈夏_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 139924,
+    "crop_box": [
+      553,
+      404,
+      1264,
+      1469
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "Cliffheart",
+    "name": "崖心",
+    "tier": 3,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_崖心_2.png",
+    "url": "https://media.prts.wiki/d/da/%E7%AB%8B%E7%BB%98_%E5%B4%96%E5%BF%83_2.png",
+    "file": "崖心_精二.webp",
+    "thumb": "崖心_精二.webp",
+    "webp": "崖心_精二.webp",
+    "link": "崖心_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 163200,
+    "crop_box": [
+      288,
+      96,
+      864,
+      960
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "Kjera",
+    "name": "耶拉",
+    "tier": 4,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_耶拉_2.png",
+    "url": "https://media.prts.wiki/7/75/%E7%AB%8B%E7%BB%98_%E8%80%B6%E6%8B%89_2.png",
+    "file": "耶拉_精二.webp",
+    "thumb": "耶拉_精二.webp",
+    "webp": "耶拉_精二.webp",
+    "link": "耶拉_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 133040,
+    "crop_box": [
+      858,
+      503,
+      1702,
+      1770
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "Pramanix",
+    "name": "初雪",
+    "tier": 4,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_初雪_2.png",
+    "url": "https://media.prts.wiki/0/05/%E7%AB%8B%E7%BB%98_%E5%88%9D%E9%9B%AA_2.png",
+    "file": "初雪_精二.webp",
+    "thumb": "初雪_精二.webp",
+    "webp": "初雪_精二.webp",
+    "link": "初雪_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 132442,
+    "crop_box": [
+      532,
+      419,
+      1290,
+      1556
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "Degenbrecher",
+    "name": "锏",
+    "tier": 5,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_锏_2.png",
+    "url": "https://media.prts.wiki/9/95/%E7%AB%8B%E7%BB%98_%E9%94%8F_2.png",
+    "file": "锏_精二.webp",
+    "thumb": "锏_精二.webp",
+    "webp": "锏_精二.webp",
+    "link": "锏_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 178058,
+    "crop_box": [
+      896,
+      694,
+      1766,
+      2000
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "Gnosis",
+    "name": "灵知",
+    "tier": 4,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_灵知_2.png",
+    "url": "https://media.prts.wiki/0/09/%E7%AB%8B%E7%BB%98_%E7%81%B5%E7%9F%A5_2.png",
+    "file": "灵知_精二.webp",
+    "thumb": "灵知_精二.webp",
+    "webp": "灵知_精二.webp",
+    "link": "灵知_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 118336,
+    "crop_box": [
+      845,
+      739,
+      1766,
+      2122
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "Pramanix the Prerita",
+    "name": "圣聆初雪",
+    "tier": 6,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_圣聆初雪_2.png",
+    "url": "https://media.prts.wiki/5/59/%E7%AB%8B%E7%BB%98_%E5%9C%A3%E8%81%86%E5%88%9D%E9%9B%AA_2.png",
+    "file": "圣聆初雪_精二.webp",
+    "thumb": "圣聆初雪_精二.webp",
+    "webp": "圣聆初雪_精二.webp",
+    "link": "圣聆初雪_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 182202,
+    "crop_box": [
+      858,
+      874,
+      1702,
+      2141
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "SilverAsh the Reignfrost",
+    "name": "凛御银灰",
+    "tier": 6,
+    "faction": "谢拉格",
+    "status": "ok",
+    "source_file": "立绘_凛御银灰_2.png",
+    "url": "https://media.prts.wiki/b/b2/%E7%AB%8B%E7%BB%98_%E5%87%9B%E5%BE%A1%E9%93%B6%E7%81%B0_2.png",
+    "file": "凛御银灰_精二.webp",
+    "thumb": "凛御银灰_精二.webp",
+    "webp": "凛御银灰_精二.webp",
+    "link": "凛御银灰_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 167658,
+    "crop_box": [
+      794,
+      513,
+      1766,
+      1972
+    ],
+    "note": "PRTS 原始立绘；2:3 人物居中裁剪，顶部为阵营及星级标签留白"
+  },
+  {
+    "id": "Mountain Snowdevil",
+    "name": "山雪鬼",
+    "tier": 1,
+    "faction": "谢拉格",
+    "status": "enemy portrait",
+    "source_file": "头像_敌人_山雪鬼.png",
+    "url": "https://media.prts.wiki/0/05/%E5%A4%B4%E5%83%8F_%E6%95%8C%E4%BA%BA_%E5%B1%B1%E9%9B%AA%E9%AC%BC.png",
+    "file": "山雪鬼_敌人.webp",
+    "thumb": "山雪鬼_敌人.webp",
+    "webp": "山雪鬼_敌人.webp",
+    "link": "山雪鬼_敌人.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 43842,
+    "note": "PRTS 敌人档案头像，保留完整主体，2:3 卡面顶部留白"
+  },
+  {
+    "id": "Truesilver Slash",
+    "name": "真银斩",
+    "tier": 1,
+    "faction": "谢拉格",
+    "source_file": "技能_真银斩.png",
+    "url": "https://media.prts.wiki/f/fd/%E6%8A%80%E8%83%BD_%E7%9C%9F%E9%93%B6%E6%96%A9.png",
+    "file": "真银斩_技能.png",
+    "link": "真银斩_技能.png",
+    "note": "PRTS 银灰第三技能图标；保留原始比例完整显示"
   }
 ]

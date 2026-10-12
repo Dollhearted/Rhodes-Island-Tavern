@@ -25,7 +25,7 @@ function previewBoardPointer(ev){
     const rect=p.card.getBoundingClientRect();p.ghost=p.card.cloneNode(true);
     p.ghost.classList.remove('board-pressed','dragging');
     p.ghost.classList.add('board-drag-ghost');p.ghost.removeAttribute('id');
-    p.ghost.style.width=rect.width+'px';p.ghost.style.height=rect.height+'px';
+    p.ghost.style.width=(p.card.offsetWidth||rect.width)+'px';p.ghost.style.height=(p.card.offsetHeight||rect.height)+'px';
     p.ghost.removeAttribute('data-side');p.ghost.removeAttribute('data-slot');
     document.body.appendChild(p.ghost);p.card.classList.add('board-drag-source');
   }
