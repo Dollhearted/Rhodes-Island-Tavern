@@ -11,7 +11,7 @@
 <button id="apply" disabled>应用优胜参数到游戏</button><button id="export" disabled>导出训练记录</button>
 <p>结果自动保存在服务器；点击应用后，所有浏览器中新开始的游戏 AI 使用该参数。训练不会覆盖推荐阵容或当前玩家存档。参数搜索不保证每代实际胜率提升，建议多局训练后验证。</p>
 <a href="/">返回游戏</a><pre id="out" role="status">等待开始。</pre>
-<script>
+<script src="network.js"></script><script>
 'use strict';
 const $=id=>document.getElementById(id),key='autochess-training-v1';
 let stopped=false,running=false,checkpoint=null,frames=[],revision=0;
@@ -26,14 +26,14 @@ function reward(board,guides,rank){
 }
 function mutate(weights){return weights.map(v=>Math.max(.25,Math.min(3,v*Math.exp((Math.random()-.5)*.6))))}
 const owner='training-'+(sessionStorage.aiTrainingOwner||(sessionStorage.aiTrainingOwner=crypto.randomUUID()));
-async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Player-Id':owner},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||r.statusText);return data}
-async function trainingApi(body){
-  const r=await fetch('/api/training',body?{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{cache:'no-store'});
-  if(r.status===404)throw Error('服务器尚未加载训练共享接口，请重启 python server.py 后刷新。');
-  const value=await r.json();if(!r.ok)throw Error(value.error||'训练同步失败');return value;
-}
+function retryNotice(attempt,delay){show(`连接暂时中断，${(delay/1000).toFixed(1)} 秒后自动重试（第 ${attempt} 次）；当前训练进度保留。`)}
+async function api(path,body){return requestJSON(path,{method:'POST',headers:{'Content-Type':'application/json','X-Player-Id':owner},body:JSON.stringify(body),onRetry:retryNotice})}
+async function trainingApi(body){return requestJSON('/api/training',body?{method:'POST',headers:{'Content-Type':'application/json','X-Player-Id':owner},body:JSON.stringify(body),onRetry:retryNotice}:{onRetry:retryNotice})}
 async function loadTraining(){
   let state=await trainingApi();
+  let pending=null;try{pending=JSON.parse(localStorage.getItem('autochess-training-unsynced')||'null')}catch{}
+  if(pending?.checkpoint&&pending.revision===state.revision){state=await trainingApi({mode:'save',revision:pending.revision,checkpoint:pending.checkpoint});localStorage.removeItem('autochess-training-unsynced')}
+
   if(!state.checkpoint||!state.policy){
     let old=null,policy=null;try{old=JSON.parse(localStorage.getItem(key)||'null');policy=JSON.parse(localStorage.getItem('autochess-ai-policy-v1')||'null')}catch{}
     if((!state.checkpoint&&old)||(!state.policy&&policy))state=await trainingApi({mode:'import',checkpoint:!state.checkpoint?old:null,policy:!state.policy?policy:null});
@@ -43,13 +43,15 @@ async function loadTraining(){
 function cleanup(){for(const f of frames)f.remove();frames=[]}
 function loadAgent(seat){return new Promise((resolve,reject)=>{
   const f=document.createElement('iframe');f.hidden=true;frames.push(f);
-  const timer=setTimeout(()=>reject(Error('AI 加载超时')),60000);
-  f.onload=async()=>{try{const a=f.contentWindow.arenaAgent;if(!a)throw Error('AI 模块未加载');await a.init(seat);clearTimeout(timer);resolve({id:seat.id,a})}catch(e){clearTimeout(timer);reject(e)}};
+  const fail=e=>{f.onload=null;f.remove();frames=frames.filter(x=>x!==f);reject(e)};
+  const timer=setTimeout(()=>fail(Error('AI 加载超时')),180000);
+  f.onload=async()=>{try{const a=f.contentWindow.arenaAgent;if(!a)throw Error('AI 模块未加载');await a.init(seat);clearTimeout(timer);resolve({id:seat.id,a})}catch(e){clearTimeout(timer);fail(e)}};
   f.src='/index.html?arena-agent='+encodeURIComponent(seat.id);document.body.append(f);
 })}
+async function loadAgentWithRetry(seat){for(let attempt=0;attempt<4;attempt++){try{return await loadAgent(seat)}catch(e){if(attempt===3)throw e;retryNotice(attempt+1,2000);await new Promise(r=>setTimeout(r,2000))}}}
 async function match(population,game,generation,games,guides){
   cleanup();let {lobby}=await api('/api/arena/start',{nickname:'训练 AI 0',training:true});
-  const seats=[...lobby.seats].sort((a,b)=>a.number-b.number),agents=await Promise.all(seats.map(loadAgent));
+  const seats=[...lobby.seats].sort((a,b)=>a.number-b.number),agents=await Promise.all(seats.map(loadAgentWithRetry));
   if(!guides)guides=agents[0].a.guides();
   for(let i=0;i<8;i++){agents[i].candidate=(i+game)%8;agents[i].a.configure({weights:population[agents[i].candidate],guides})}
   for(let round=1;round<=100;round++){
@@ -81,7 +83,7 @@ $('run').onclick=async()=>{
       const winner=scores.indexOf(Math.max(...scores));best=population[winner];
       const entry={generation:(checkpoint?.generation||0)+1,scores,population,records,winner,time:new Date().toISOString()};
       checkpoint={version:1,generation:entry.generation,weights:best,guides,history:[...(checkpoint?.history||[]),entry].slice(-100)};
-      localStorage.setItem('autochess-training-unsynced',JSON.stringify(checkpoint));
+      localStorage.setItem('autochess-training-unsynced',JSON.stringify({revision,checkpoint}));
       const saved=await trainingApi({mode:'save',revision,checkpoint});revision=saved.revision;checkpoint=saved.checkpoint;
       localStorage.removeItem('autochess-training-unsynced');
       show(`第 ${entry.generation} 代已保存。平均评分 ${scores[winner].toFixed(2)}\n参数：${best.map(v=>v.toFixed(3)).join(', ')}\n`);
@@ -93,6 +95,6 @@ $('stop').onclick=()=>{stopped=true;$('stop').disabled=true};
 $('apply').onclick=async()=>{try{const saved=await trainingApi({mode:'apply',revision});revision=saved.revision;show('已应用到服务器。所有浏览器中新开始的游戏 AI 将使用这套参数。')}catch(e){show(e.message)}};
 $('export').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(checkpoint,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='ai-training.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('run').disabled=true;
-loadTraining().then(()=>{show(checkpoint?`已读取服务器第 ${checkpoint.generation} 代结果，可继续训练或应用。`:'服务器尚无训练结果，可以开始训练。');$('run').disabled=false;$('apply').disabled=!checkpoint;$('export').disabled=!checkpoint}).catch(e=>show(e.message));
+loadTraining().then(()=>{show(checkpoint?`已读取服务器第 ${checkpoint.generation} 代结果，可继续训练或应用。`:'服务器尚无训练结果，可以开始训练。');$('run').disabled=false;$('apply').disabled=!checkpoint;$('export').disabled=!checkpoint}).catch(e=>{show(e.message+'；可点击开始 / 继续训练重新连接。');$('run').disabled=false});
 window.addEventListener('beforeunload',e=>{if(running){e.preventDefault();e.returnValue=''}});
 </script></html>

@@ -49,7 +49,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 翎羽 / Plume
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Plume','翎羽','拉特兰干员','拉特兰',1,2,1,1,'#e53935','战斗开始：本回合战斗中，所有友方棋子获得+1铳弹强度','{"mechanics":["battle_start","bullet_strength"],"battle_start":{"type":"team_bullet_strength","amount":1},"golden_description":"战斗开始：本回合战斗中，所有友方棋子获得+2铳弹强度","golden_overrides":{"description":"战斗开始：本回合战斗中，所有友方棋子获得+2铳弹强度","battle_start":{"type":"team_bullet_strength","amount":2}}}')
+VALUES ('Plume','翎羽','拉特兰干员','拉特兰',1,2,1,1,'#e53935','战斗开始：本回合战斗中，所有友方棋子和棋手获得+1铳弹伤害','{"mechanics":["battle_start","bullet_strength"],"battle_start":{"type":"team_bullet_strength","amount":1},"golden_description":"战斗开始：本回合战斗中，所有友方棋子和棋手获得+2铳弹伤害","golden_overrides":{"description":"战斗开始：本回合战斗中，所有友方棋子和棋手获得+2铳弹伤害","battle_start":{"type":"team_bullet_strength","amount":2}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
@@ -149,7 +149,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 新约能天使 / Exusiai the New Covenant
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Exusiai the New Covenant','新约能天使','拉特兰干员','拉特兰',6,6,3,1,'#e53935','后勤&先手：使所有友方棋子获得+1铳弹强度和+3/+3','{"mechanics":["logistics","initiative","bullet_strength"],"logistics":{"type":"team_buff","attack":3,"max_hp":3,"bullet_strength":1},"initiative":{"type":"team_buff","attack":3,"max_hp":3,"bullet_strength":1},"golden_description":"后勤&先手：使所有友方获得+2铳弹强度和+6/+6","golden_overrides":{"description":"后勤&先手：使所有友方获得+2铳弹强度和+6/+6","logistics":{"type":"team_buff","attack":6,"max_hp":6,"bullet_strength":2},"initiative":{"type":"team_buff","attack":6,"max_hp":6,"bullet_strength":2}}}')
+VALUES ('Exusiai the New Covenant','新约能天使','拉特兰干员','拉特兰',6,6,3,1,'#e53935','后勤&先手：使所有友方棋子和棋手获得+1铳弹伤害和+3/+3','{"mechanics":["logistics","initiative","bullet_strength"],"logistics":{"type":"team_buff","attack":3,"max_hp":3,"bullet_strength":1},"initiative":{"type":"team_buff","attack":3,"max_hp":3,"bullet_strength":1},"golden_description":"后勤&先手：使所有友方获得+2铳弹强度和+6/+6","golden_overrides":{"description":"后勤&先手：使所有友方获得+2铳弹强度和+6/+6","logistics":{"type":"team_buff","attack":6,"max_hp":6,"bullet_strength":2},"initiative":{"type":"team_buff","attack":6,"max_hp":6,"bullet_strength":2}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
@@ -169,7 +169,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 塑心 / Virtuosa
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Virtuosa','塑心','拉特兰干员','拉特兰',5,2,2,1,'#e53935','遗计：本回合战斗中，所有友方棋子获得+2铳弹强度和+2/+2','{"mechanics":["legacy","bullet_strength"],"legacy":{"type":"team_buff","attack":2,"max_hp":2,"bullet_strength":2,"round_aura":true},"golden_description":"遗计：本回合战斗中，所有友方棋子获得+4铳弹强度和+4/+4","golden_overrides":{"description":"遗计：本回合战斗中，所有友方棋子获得+4铳弹强度和+4/+4","legacy":{"type":"team_buff","attack":4,"max_hp":4,"bullet_strength":4,"round_aura":true}}}')
+VALUES ('Virtuosa','塑心','拉特兰干员','拉特兰',5,2,2,1,'#e53935','遗计：本回合战斗中，所有友方棋子和棋手获得+2铳弹伤害和+2/+2','{"mechanics":["legacy","bullet_strength"],"legacy":{"type":"team_buff","attack":2,"max_hp":2,"bullet_strength":2,"round_aura":true},"golden_description":"遗计：本回合战斗中，所有友方棋子获得+4铳弹强度和+4/+4","golden_overrides":{"description":"遗计：本回合战斗中，所有友方棋子获得+4铳弹强度和+4/+4","legacy":{"type":"team_buff","attack":4,"max_hp":4,"bullet_strength":4,"round_aura":true}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
@@ -841,7 +841,7 @@ ON CONFLICT(id) DO UPDATE SET
 -- 乌尔比安 / Ulpianus
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Ulpianus','乌尔比安','阿戈尔干员','阿戈尔',6,6,6,1,'#153c72','遗计：随机召唤2个阿戈尔阵营棋子，并使其获得+3/+3','{"mechanics":["legacy"],"legacy":{"type":"summon_random_aegir","count":2,"amount":3},"golden_description":"遗计：随机召唤4个阿戈尔阵营棋子，并使其获得+6/+6","golden_overrides":{"legacy":{"type":"summon_random_aegir","count":4,"amount":6}}}')
+VALUES ('Ulpianus','乌尔比安','阿戈尔干员','阿戈尔',5,6,6,1,'#153c72','遗计：随机召唤2个阿戈尔阵营棋子，并使其获得+3/+3','{"mechanics":["legacy"],"legacy":{"type":"summon_random_aegir","count":2,"amount":3},"golden_description":"遗计：随机召唤4个阿戈尔阵营棋子，并使其获得+6/+6","golden_overrides":{"legacy":{"type":"summon_random_aegir","count":4,"amount":6}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
@@ -858,15 +858,26 @@ ON CONFLICT(id) DO UPDATE SET
     attack_range=excluded.attack_range, color=excluded.color,
     description=excluded.description, extras_json=excluded.extras_json;
 
--- 归溟幽灵鲨 / Specter the Unchained
+-- 克莱门莎 / Clementia
 INSERT INTO unit_cards
     (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
-VALUES ('Specter the Unchained','归溟幽灵鲨','阿戈尔干员','阿戈尔',5,5,5,1,'#153c72','遗计：召唤3只具有嘲讽的始海穿刺者','{"mechanics":["legacy"],"legacy":{"type":"summon","summon_id":"Primal Sea Piercer","count":3},"golden_description":"遗计：召唤6只具有嘲讽的始海穿刺者","golden_overrides":{"legacy":{"type":"summon","summon_id":"Primal Sea Piercer","count":6}}}')
+VALUES ('Clementia','克莱门莎','阿戈尔干员','阿戈尔',5,5,5,1,'#153c72','遗计：召唤3只具有嘲讽的始海穿刺者','{"mechanics":["legacy"],"legacy":{"type":"summon","summon_id":"Primal Sea Piercer","count":3},"golden_description":"遗计：召唤6只具有嘲讽的始海穿刺者","golden_overrides":{"legacy":{"type":"summon","summon_id":"Primal Sea Piercer","count":6}}}')
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name, role=excluded.role, faction=excluded.faction,
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
     attack_range=excluded.attack_range, color=excluded.color,
     description=excluded.description, extras_json=excluded.extras_json;
+
+-- 归溟幽灵鲨 / Specter the Unchained
+INSERT INTO unit_cards
+    (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Specter the Unchained','归溟幽灵鲨','阿戈尔干员','阿戈尔',6,9,9,1,'#153c72','复活；战斗开始：召唤1个自身完整分身，如果满场，则自身获得其属性','{"mechanics":["revive"],"revive":true,"battle_start":{"type":"summon_complete_clones","count":1},"golden_description":"复活；战斗开始：召唤2个自身完整分身，如果满场，则自身获得其属性","golden_overrides":{"battle_start":{"type":"summon_complete_clones","count":2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
 
 -- 棘刺 / Thorns
 INSERT INTO unit_cards
@@ -1139,3 +1150,145 @@ ON CONFLICT(id) DO UPDATE SET
     tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
     attack_range=excluded.attack_range, color=excluded.color,
     description=excluded.description, extras_json=excluded.extras_json;
+
+-- 卡西米尔
+
+-- 芬 / Fang
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Fang','芬','卡西米尔干员','卡西米尔',1,1,2,1,'#e989b4','护盾','{"mechanics": ["shield"], "shield": true, "golden_description": "护盾", "golden_overrides": {}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 砾 / Gravel
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Gravel','砾','卡西米尔干员','卡西米尔',1,3,3,1,'#e989b4','突袭(1)','{"mechanics": ["raid"], "raid": {"hits": 1}, "golden_description": "突袭(2)", "golden_overrides": {"raid": {"hits": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 空爆 / Catapult
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Catapult','空爆','卡西米尔干员','卡西米尔',2,3,2,1,'#e989b4','先手：随机使1个友方棋子获得护盾和+2/+2，1回合','{"mechanics": ["initiative"], "initiative": {"type": "random_shield_buff", "count": 1, "amount": 2}, "golden_description": "先手：随机使2个友方棋子获得护盾和+4/+4，1回合", "golden_overrides": {"initiative": {"type": "random_shield_buff", "count": 2, "amount": 4}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 流星 / Meteor
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Meteor','流星','卡西米尔干员','卡西米尔',2,1,3,1,'#e989b4','招募：获得1张【耀阳颔首】','{"mechanics": ["recruit"], "recruit": {"type": "gain_sunlit_nod", "count": 1}, "golden_description": "招募：获得2张【耀阳颔首】", "golden_overrides": {"recruit": {"type": "gain_sunlit_nod", "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 临光 / Nearl
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Nearl','临光','卡西米尔干员','卡西米尔',4,3,3,1,'#e989b4','护盾；每当友方失去护盾，使其永久获得+2/+2','{"mechanics": ["shield", "permanent"], "shield": true, "shield_loss_buff": 2, "golden_description": "护盾；每当友方失去护盾，使其永久获得+4/+4", "golden_overrides": {"shield_loss_buff": 4}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 白金 / Platinum
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Platinum','白金','卡西米尔干员','卡西米尔',4,4,4,1,'#e989b4','上场：获得1张【耀阳颔首】','{"mechanics": ["on_deploy"], "on_deploy": {"type": "gain_sunlit_nod", "count": 1}, "golden_description": "上场：获得2张【耀阳颔首】", "golden_overrides": {"on_deploy": {"type": "gain_sunlit_nod", "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 鞭刃 / Whislash
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Whislash','鞭刃','卡西米尔干员','卡西米尔',4,2,3,1,'#e989b4','上场：选择1个卡西米尔阵营棋子，使其获得护盾和+3/+2','{"mechanics": ["on_deploy"], "on_deploy": {"type": "select_buff_shield", "faction": "卡西米尔", "attack": 3, "max_hp": 2}, "golden_description": "上场：选择1个卡西米尔阵营棋子，使其获得护盾和+6/+4", "golden_overrides": {"on_deploy": {"type": "select_buff_shield", "faction": "卡西米尔", "attack": 6, "max_hp": 4}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 灰毫 / Ashlock
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Ashlock','灰毫','卡西米尔干员','卡西米尔',3,2,2,1,'#e989b4','护盾；复活','{"mechanics": ["shield", "revive"], "shield": true, "revive": true, "golden_description": "护盾；复活", "golden_overrides": {}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 瑕光 / Blemishine
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Blemishine','瑕光','卡西米尔干员','卡西米尔',4,5,4,1,'#e989b4','嘲讽；守护：若自身没有护盾，则获得护盾（护盾每回合最多1次）','{"mechanics": ["guard", "guardian"], "guard": true, "guardian": {"type": "gain_shield", "limit": 1}, "golden_description": "嘲讽；守护：若自身没有护盾，则获得护盾（护盾每回合最多2次）", "golden_overrides": {"guardian": {"type": "gain_shield", "limit": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 野鬃 / Wild Mane
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Wild Mane','野鬃','卡西米尔干员','卡西米尔',2,1,1,1,'#e989b4','护盾；后勤：自身获得+1/+1，每有1个其他具有护盾的棋子额外增加+1/+1','{"mechanics": ["shield", "logistics"], "shield": true, "logistics": {"type": "shield_count_self_buff", "attack": 1, "max_hp": 1}, "golden_description": "护盾；后勤：自身获得+2/+2，每有1个其他具有护盾的棋子额外增加+2/+2", "golden_overrides": {"logistics": {"type": "shield_count_self_buff", "attack": 2, "max_hp": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 远牙 / Fartooth
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Fartooth','远牙','卡西米尔干员','卡西米尔',5,3,5,1,'#e989b4','先手：对3个友方卡西米尔阵营棋子造成1铳弹伤害，并添加护盾','{"mechanics": ["initiative", "bullet_damage"], "initiative": {"type": "friendly_bullet_shield", "count": 3}, "golden_description": "先手：对6个友方卡西米尔阵营棋子造成1铳弹伤害，并添加护盾", "golden_overrides": {"initiative": {"type": "friendly_bullet_shield", "count": 6}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 焰尾 / Flametail
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Flametail','焰尾','卡西米尔干员','卡西米尔',5,6,3,1,'#e989b4','招募&回营：获得1张【同盟支援】','{"mechanics": ["recruit", "return_camp"], "recruit": {"type": "gain_alliance_support", "count": 1}, "return_camp": {"type": "gain_alliance_support", "count": 1}, "golden_description": "招募&回营：获得2张【同盟支援】", "golden_overrides": {"recruit": {"type": "gain_alliance_support", "count": 2}, "return_camp": {"type": "gain_alliance_support", "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 但书 / Proviso
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Proviso','但书','卡西米尔干员','卡西米尔',3,5,3,1,'#e989b4','护盾；支援：使所有具有护盾的友方棋子永久获得+1攻击力','{"mechanics": ["shield", "support", "permanent"], "shield": true, "support": {"type": "shield_team_attack", "attack": 1}, "golden_description": "护盾；支援：使所有具有护盾的友方棋子永久获得+2攻击力", "golden_overrides": {"support": {"type": "shield_team_attack", "attack": 2}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 玛恩纳 / Młynar
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Młynar','玛恩纳','卡西米尔干员','卡西米尔',5,6,4,1,'#e989b4','护盾；每当友方失去护盾，使所有友方棋子永久获得+1/+1','{"mechanics": ["shield", "permanent"], "shield": true, "shield_loss_team_buff": 1, "golden_description": "护盾；每当友方失去护盾，使所有友方棋子永久获得+2/+2", "golden_overrides": {"shield_loss_team_buff": 2}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- 耀骑士临光 / Nearl the Radiant Knight
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Nearl the Radiant Knight','耀骑士临光','卡西米尔干员','卡西米尔',6,6,8,1,'#e989b4','突袭(1)；攻击前：若自身没有护盾，获得护盾（护盾每回合最多2次）','{"mechanics": ["raid"], "raid": {"hits": 1}, "before_attack": {"type": "missing_shield", "shield_limit": 2}, "golden_description": "突袭(2)；攻击前：若自身没有护盾，获得护盾（护盾每回合最多4次）", "golden_overrides": {"raid": {"hits": 2}, "before_attack": {"type": "missing_shield", "shield_limit": 4}}}')
+ON CONFLICT(id) DO UPDATE SET
+    name=excluded.name, role=excluded.role, faction=excluded.faction,
+    tier=excluded.tier, max_hp=excluded.max_hp, attack=excluded.attack,
+    attack_range=excluded.attack_range, color=excluded.color,
+    description=excluded.description, extras_json=excluded.extras_json;
+
+-- Skadi commander summon; excluded from shops, available to enemy-copy effects.
+INSERT INTO unit_cards(id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Skadi Seaborn','斯卡蒂的海嗣','召唤物','阿戈尔',1,2,2,1,'#153c72','','{"summon_only":true,"mechanics":[],"golden_overrides":{}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,description=excluded.description,extras_json=excluded.extras_json;

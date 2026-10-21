@@ -1,16 +1,86 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const html=fs.readFileSync('index.html','utf8');
+const originalCreateContext=vm.createContext;vm.createContext=function(...args){const ctx=originalCreateContext(...args);if(ctx.s&&!ctx.handAppendSlot){const start=html.indexOf('function handAppendSlot(');vm.runInContext(html.slice(start,html.indexOf('\n',start)),ctx)}return ctx};
+(async function testQuintusReset(){
+ const code=fs.readFileSync('arena.js','utf8');
+ for(const zone of ['board','shop']){
+  const original={id:'old',name:'old',attack:99,max_hp:99,golden:true,shield:true,pool_tokens:['old-token']};
+  const state={board:[],shop:[]};state[zone]=[original];
+  const ctx=vm.createContext({s:state,currentCommander:null,botId:'bot',cloneData:structuredClone,log(){},tryCombineTriples(){},api:async(url,args)=>{assert.equal(args.target.zone,zone);return {commander:{id:'quintus'},card:{id:'new',name:'new',attack:3,max_hp:4,pool_tokens:[]}}}});
+  vm.runInContext(code.slice(code.indexOf('  async function useQuintusSkill('),code.indexOf('  async function chooseShuTarget(')),ctx);
+  await ctx.useQuintusSkill(original);
+  assert.equal(state[zone][0].attack,3);assert.equal(state[zone][0].golden,undefined);
+  assert.equal(state[zone][0].shield,undefined);assert.equal(state[zone][0].pool_tokens.length,0);
+ }
+})().catch(e=>{console.error(e);process.exitCode=1});
+(function testExaminerOptions(){
+ const code=fs.readFileSync('arena.js','utf8'),ctx=vm.createContext({});
+ vm.runInContext(code.slice(code.indexOf('  function examinerOptions('),code.indexOf('  async function chooseExaminerMode(')),ctx);
+ for(const [spent,damage] of [[0,3],[7,3],[8,5],[16,7]]){
+   const opts=ctx.examinerOptions(spent);assert.equal(opts.length,3);
+   assert(opts.every(o=>o.damage===damage));assert.equal(opts[0].mirror,true);
+   assert.equal(opts[1].icon,'confessor-s3.png');assert.equal(opts[2].mirror,undefined);
+ }
+})();
+(async function testEmergencyCards(){
+ const ally={name:'友方',card_type:'unit',attack:2,max_hp:3},victim={name:'商店目标',card_type:'unit',attack:8,max_hp:9};
+ const skill={exclusive_emergency:true,effect:'life_equation',name:'生命方程'};
+ const state={phase:'备战',busy:false,round:5,board:[ally],shop:[victim],bench:[skill]};let supports=0;
+ const ctx=vm.createContext({handAppendSlot:()=>state.bench.length,s:state,compact:a=>a.filter(Boolean).slice(0,7),pad:a=>a,prepTargetPool:()=>[ally,victim],log(){},draw(){},syncPlayer(){},triggerPlayerSupports(){supports++},cloneData:structuredClone,animatePrepAssimilate:async()=>{},applyClientBuff(u,a,h){u.attack+=a;u.max_hp+=h},api:async(url,data)=>{assert.equal(url,'/api/arena/emergency');assert.equal(data.action,'life_equation');return {player:{}}}});
+ vm.runInContext(extract('function isCardLocked(', 'function shuffle('),ctx);
+ await ctx.useEmergencySkill(0,victim);
+ assert.equal(ally.attack,10);assert.equal(ally.max_hp,12);assert.equal(state.shop[0],null);assert.equal(supports,1);assert.equal(state.busy,false);
+ state.bench=Array.from({length:12},()=>({card_type:'unit'}));ctx.receiveEmergencyCard({id:'overflow',locked_until_round:6});
+ assert.equal(state.bench.length,13);assert.equal(ctx.isCardLocked(state.bench[12]),true);
+ ctx.tryCombineTriples=()=>{};state.round=6;ctx.unlockDeliveredCards();assert.equal(state.bench[12].locked_until_round,undefined);
+ const locked={id:'same',card_type:'unit',locked_until_round:7};state.bench=[locked,{id:'same',card_type:'unit'}];state.board=[{id:'same',card_type:'unit'}];
+ loadFunctions(ctx,['collectMergePieces']);assert.equal(ctx.collectMergePieces().length,2);
+ state.round=7;assert.equal(ctx.collectMergePieces().length,3);
+})().catch(e=>{console.error(e);process.exitCode=1});
+(function testReignfrostSupport(){
+ const code=fs.readFileSync('arena.js','utf8');let original=0;
+ const state={board:[{attack:2,max_hp:3},null,{attack:4,max_hp:5}],shop:[{attack:9,max_hp:9}]};
+ const ctx=vm.createContext({s:state,currentCommander:{id:'silverash_reignfrost'},triggerPlayerSupports(){original++},compact:a=>a.filter(Boolean),applyClientBuff(u,a,h,b,source){assert.equal(source,'support');u.attack+=a;u.max_hp+=h}});
+ vm.runInContext(code.slice(code.indexOf('  const unitSupports='),code.indexOf('  const syncCommanderPlayer=')),ctx);
+ ctx.triggerPlayerSupports();ctx.triggerPlayerSupports();
+ assert.equal(original,2);assert.equal(state.board[0].attack,4);assert.equal(state.board[2].max_hp,7);assert.equal(state.shop[0].attack,9);
+ ctx.currentCommander={id:'typhon'};ctx.triggerPlayerSupports();assert.equal(state.board[0].attack,4);
+})();
 // The bot realm must boot alongside the real immutable frontend bindings.
 function testArenaAgentBoot(){
   const ctx=vm.createContext({URLSearchParams,location:{search:'?arena-agent=test-ai'},s:{},window:{},
-    start(){},fight(){},startPrep(){},loadEnemy(){},draw(){},updateHud(){},upgradeShop(){},queueTripleAnimation(){},
-    captureTripleSources(){},animatePrepAssimilate(){},chooseThree(){},chooseBlessingStat(){}});
+    start(){},fight(){},startPrep(){},loadEnemy(){},draw(){},updateHud(){},triggerPrepSummon(){},triggerClientBloodbattle(){},triggerPlayerSupports(){},syncPlayer(){},upgradeShop(){},queueTripleAnimation(){},
+    tryCombineTriples(){},captureTripleSources(){},animatePrepAssimilate(){},chooseThree(){},chooseBlessingStat(){}});
   vm.runInContext("const log=()=>{};",ctx);
   vm.runInContext(fs.readFileSync('arena.js','utf8'),ctx);
   assert.equal(ctx.s.arenaPlayerId,'test-ai');
   for(const method of ['init','step','submit','result','prepare'])assert.equal(typeof ctx.window.arenaAgent[method],'function');
 }
 testArenaAgentBoot();
+(function testHarshTrainingExpiry(){
+ const target={card_type:'unit',name:'target',attack:2,max_hp:3},natural={card_type:'unit',attack:2,max_hp:3,combo:true};
+ const state={round:1,board:[target],shop:[natural],bench:[{effect:'harsh_training',effect_value:6,name:'training'},{effect:'harsh_training',effect_value:2,name:'training'}]};
+ const ctx=vm.createContext({s:state,compact:a=>(a||[]).filter(Boolean),triggerPlayerSupports(){},log(){},draw(){},applyClientBuff(u,a,h){u.attack+=a+1;u.max_hp+=h+1}});
+ vm.runInContext(html.slice(html.indexOf('function useHarshTraining('),html.indexOf('function applyLifeTower(')),ctx);
+ ctx.useHarshTraining(0,target);ctx.useHarshTraining(1,natural);
+ assert.equal(target.attack,9);assert.equal(natural.attack,5);
+ ctx.expireHarshTraining();assert.equal(target.attack,9);
+ state.round=2;ctx.expireHarshTraining();
+ assert.equal(target.attack,3);assert.equal(target.max_hp,4);assert.equal(target.training_buffs,undefined);assert.equal(target.combo,undefined);
+ assert.equal(natural.combo,true);assert.equal(natural.attack,3);
+ ctx.expireHarshTraining();assert.equal(target.attack,3);
+})();
+(async function testShuBoardAndShopBuff(){
+  const code=fs.readFileSync('arena.js','utf8');
+  const unit=faction=>({id:faction,card_type:'unit',faction,attack:1,max_hp:1});
+  const board=unit('炎'),shop=unit('炎'),other=unit('拉特兰'),bench=unit('炎');
+  const ctx=vm.createContext({s:{board:[board,other],shop:[shop],bench:[bench]},compact:a=>a.filter(Boolean),botId:true,
+    api:async()=>({commander:{id:'shu'},faction:'炎',amount:2}),currentCommander:null,log(){},
+    applyClientBuff(u,a,h){u.attack+=a;u.max_hp+=h}});
+  vm.runInContext(code.slice(code.indexOf('  function shuTargets('),code.indexOf('  async function chooseShuTarget(')),ctx);
+  await ctx.useShuSkill(shop);
+  assert.equal(board.attack,3);assert.equal(shop.attack,3);assert.equal(other.attack,1);assert.equal(bench.attack,1);
+})().catch(e=>{console.error(e);process.exitCode=1});
 function testRecommendationGuidesAffectAI(){
   const code=fs.readFileSync('arena.js','utf8');
   const unit=(id,name)=>({id,name,card_type:'unit',attack:3,max_hp:3,stars:2,faction:'拉特兰'});
@@ -30,7 +100,7 @@ function testMultipleGuidesMigration(){
   const code=fs.readFileSync('arena.js','utf8');
   const old={'拉特兰':{name:'我的打法',core:['a'],transition:['b'],note:'原始说明'},'中立':{name:'混搭一',core:['a'],transition:[],note:'保留一'},'任意':{name:'混搭二',core:['b'],transition:[],note:'保留二'}};
   const storage=new Map([['autochess-lineups-v1',JSON.stringify(old)]]);
-  const ctx=vm.createContext({s:{cards:[{id:'a',name:'甲'},{id:'b',name:'乙'}]},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)}});
+  const ctx=vm.createContext({s:{cards:[{id:'a',name:'甲',card_type:'unit'},{id:'b',name:'乙',card_type:'unit'}]},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)}});
   vm.runInContext(code.slice(code.indexOf('  const guideKey='),code.indexOf('  if(botId){')),ctx);
   let guides=ctx.readGuides();
   assert.equal(guides[0].name,'我的打法');assert.equal(guides[0].note,'原始说明');
@@ -51,9 +121,9 @@ async function testLobbyHealthWaitsForPlayback(){
     const next={seats:[{id:'bot',health:40},{id:'self',health:finished?-2:35}],finished};
     let release,started;const playing=new Promise(r=>started=r),gate=new Promise(r=>release=r);
     const paints=[],state={phase:'备战',board:[],hp:50,round:1};
-    const ctx=vm.createContext({s:state,arena:{lobby:old,agents:[]},tutorial:{active:false},playerId:'self',
-      document:{getElementById:()=>null,querySelector:selector=>selector.includes('h2')?{}:null,body:{classList:{add(){}}}},
-      compact:a=>a.filter(Boolean),cloneData:structuredClone,pad:a=>a,clearInterval(){},draw(){},finishAgents:async()=>{},stateForBattle:()=>({}),
+    const ctx=vm.createContext({s:state,workshopRequest:null,deliverCommanderRewards(){},arena:{lobby:old,agents:[]},tutorial:{active:false},playerId:'self',
+      document:{getElementById:()=>null,querySelector:selector=>selector.includes('h2')?{}:selector.includes('#gameMain>')?{prepend(){}}:null,body:{classList:{add(){},remove(){}}}},
+      compact:a=>a.filter(Boolean),cloneData:structuredClone,pad:a=>a,clearInterval(){},draw(){},chooseCommanderUpgrade:async()=>{},finishAgents:async()=>{},stateForBattle:()=>({}),
       api:async()=>({lobby:next,results:{self:{health:finished?-2:35,opponent_board:[],winner:'right',loss_damage:15}}}),
       applyResult:async res=>{started();await gate;state.hp=res.health},paintLobby:()=>paints.push(ctx.arena.lobby),
       log(){},results(){},newShop:async()=>{},startPrep:async()=>{},reportError:msg=>{throw Error(msg)},alert:msg=>{throw Error(msg)}});
@@ -79,6 +149,7 @@ testTrainingReward();
 async function testGuideApiOldServerMessage(){
   const line=html.split(/\r?\n/).find(l=>l.startsWith('let api='));let status=404;
   const ctx=vm.createContext({s:{},playerId:'test',fetch:async(url,options)=>{assert.equal(options.cache,'no-store');return {status,ok:status===200,text:async()=>status===404?'<!DOCTYPE HTML>':JSON.stringify({guides:[]})}}});
+  vm.runInContext(fs.readFileSync('network.js','utf8'),ctx);
   vm.runInContext(line+';globalThis.callApi=api;',ctx);
   await assert.rejects(ctx.callApi('/api/guides'),/python server.py/);
   status=200;assert.equal((await ctx.callApi('/api/guides')).guides.length,0);
@@ -98,7 +169,7 @@ async function testAnimation(kind,expected,volleys=1){
   const ctx=vm.createContext({s:{},battleAnchors:new Map(),cacheBattleAnchors(){},draw(){},sleep:async()=>{},
     animateBullet:async()=>{if(launched%3===0)assert.equal(finished,launched);launched++;active++;max=Math.max(max,active);await new Promise(setImmediate);active--;finished++},
     applyBattleEventState:e=>{if(e.type==='cumulative_counter')assert.equal(finished,3*volleys);if(kind==='bullet_batch'&&e.damage_type==='bullet')assert.equal(finished,applied.filter(x=>x.damage_type==='bullet').length+1);applied.push(e)},applyEventLog(){}});
-  vm.runInContext(extract('async function animateEvents(', 'async function refresh('),ctx);
+  vm.runInContext(extract('const deliveryMarkers=', 'async function refresh('),ctx);
   const shot={damage_type:'bullet',side:'left',from_slot:1,target_side:'right',to_slot:1};
   const events=Array.from({length:volleys},()=>[{type:kind+'_start'},shot,shot,shot,{type:kind+'_end'}]).flat();
   events.push({type:'cumulative_counter'});
@@ -110,6 +181,7 @@ async function testSelling(){
   const ctx=vm.createContext({document:{head:{insertAdjacentHTML(){}},addEventListener(){},elementFromPoint:()=>({closest:()=>true})},window:{addEventListener(){}},s:{phase:'备战',busy:false},Date,draw(){},compact:a=>a.filter(Boolean),pad:a=>a,log(){},syncPlayer(){}});
   vm.runInContext(fs.readFileSync('board-drag.js','utf8').split('// Guided tutorial')[0],ctx);
   vm.runInContext(extract('async function sellCard(', 'window.allowUnitSkillDrop='),ctx);
+  loadFunctions(ctx,['isCardLocked']);
   for(const where of ['bench','board'])for(const id of ['Hoederer','Ines','U-Official','ordinary'])for(const golden of [false,true]){
     const card={id,card_type:'unit',name:id,golden};let refunded=0,triggered=0;
     ctx.s.bench=[card];ctx.s.board=[card];
@@ -120,7 +192,7 @@ async function testSelling(){
     assert.equal(refunded,1);assert.equal(triggered,1);
   }
 }
-function loadFunctions(ctx,names){for(const name of names){const line=html.split(/\r?\n/).find(x=>x.startsWith('function '+name+'(')||x.startsWith('async function '+name+'('));assert.ok(line,name);vm.runInContext(line,ctx)}}
+function loadFunctions(ctx,names){for(const name of new Set(['isCardLocked',...names])){const line=html.split(/\r?\n/).find(x=>x.startsWith('function '+name+'(')||x.startsWith('async function '+name+'('));assert.ok(line,name);vm.runInContext(line,ctx)}}
 function testGuard(){
   const ctx=vm.createContext({});loadFunctions(ctx,['hasMark','setGuard','mechanicDetails']);
   const podenco={description:'上场：选择1个棋子，使其获得嘲讽，并使所有友方具有嘲讽的棋子获得+3/+3',mechanics:['on_deploy']};
@@ -134,13 +206,13 @@ function testGuard(){
 async function testBattleMerge(skip,owned=2){
   const base={id:'Fiammetta',name:'菲亚梅塔',card_type:'unit',attack:4,max_hp:4,mechanics:['legacy']};
   const compact=a=>a.filter(Boolean),pad=a=>{a=compact(a);return a.concat(Array(7-a.length).fill(null))};
-  const state={cards:[base],board:pad(Array.from({length:owned},()=>({...base,attack:6}))),bench:Array(12).fill(null),enemy:[],phase:'备战',hp:50,round:2,shopLocked:true,skipBattle:skip};
+  const state={cards:[base],board:pad(Array.from({length:owned},()=>({...base,attack:6}))),bench:Array(12).fill(null),enemy:[],phase:'备战',hp:50,round:2,shopLocked:true,shop:[],shopSlots:0,skipBattle:skip};
   // Combat-only summoned copy must not count towards permanent triples.
   const res={left:[...structuredClone(state.board).filter(Boolean),{...base,summoned_by_phase:'legacy'}],right:[],winner:'left',round:3,events:[{type:'gain_card',side:'left',from:'死芒',card:{...base},card_name:base.name}]};
   const ctx=vm.createContext({s:state,compact,pad,captureTripleSources:occ=>occ.map(o=>o.u),queueTripleAnimation:(sources,golden)=>{assert.equal(sources.length,3);assert.equal(golden.golden,true)},cloneData:structuredClone,emptyBench:()=>state.bench.findIndex(x=>!x),log(){},draw(){},clearInterval(){},setTimeout(){},api:async()=>res,syncPlayer(){},startPrep:async()=>{},battleAnchors:new Map(),cacheBattleAnchors(){},sleep:async()=>{}});
-  loadFunctions(ctx,['hasMark','setGuard','baseUnitById','applyGoldenOverrides','extraStatSum','applyAegirGameBonus','goldenCopy','collectMergePieces','phantomCanReplace','findTripleMerge','tryCombineTriples','cleanupAfterBattle','restoreBoardAfterBattle','applyEventLog','fight']);
+  loadFunctions(ctx,['hasMark','setGuard','baseUnitById','applyGoldenOverrides','extraStatSum','applyAegirGameBonus','goldenCopy','collectMergePieces','phantomCanReplace','findTripleMerge','tryCombineTriples','cleanupAfterBattle','restoreBoardAfterBattle','applyEventLog','replenishShop','fight']);
   ctx.applyBattleEventState=()=>{};
-  vm.runInContext(extract('async function animateEvents(', 'async function refresh('),ctx);
+  vm.runInContext(extract('const deliveryMarkers=', 'async function refresh('),ctx);
   await ctx.fight();
   const all=[...state.board,...state.bench].filter(Boolean);
   assert.equal(all.filter(u=>u.golden).length,owned===2?1:0);
@@ -274,7 +346,7 @@ async function testTripleAnimationQueue(){
 async function testComboPlaybackAndSeaKeywords(){
   for(const script of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))new vm.Script(script[1]);
   const order=[],ctx=vm.createContext({s:{},battleAnchors:new Map(),cacheBattleAnchors(){},draw(){},sleep:async()=>{},animateCombo:async e=>order.push('combo'+e.strike),animateCollision:async()=>order.push('attack'),applyBattleEventState(){},applyEventLog(){},esc:x=>x,hasMark:(u,k)=>!!u[k]});
-  vm.runInContext(extract('async function animateEvents(', 'async function refresh('),ctx);
+  vm.runInContext(extract('const deliveryMarkers=', 'async function refresh('),ctx);
   await ctx.animateEvents({events:[{type:'combo_strike',strike:1},{damage_type:'collision'},{type:'combo_strike',strike:2},{damage_type:'collision'}],left:[],right:[]});
   assert.deepEqual(order,['combo1','attack','combo2','attack']);
   vm.runInContext(extract('function renderDesc(', 'function mechanicDetails('),ctx);
@@ -365,7 +437,7 @@ async function testLifeTowerDropRoutes(){
 }
 function testLifeTowerExpiry(){
   const u={name:'化境棋子',attack:2,max_hp:3,morale:{attack:1,max_hp:2}},bench={attack:5,max_hp:6},s={round:3,board:[u],bench:[bench]};
-  const ctx=vm.createContext({s,compact:a=>a.filter(Boolean),log(){}});
+  const ctx=vm.createContext({s,compact:a=>(a||[]).filter(Boolean),log(){},expireHarshTraining(){}});
   for(const name of ['triggerClientMorale','applyClientBuff','applyLifeTower','expireLifeTower']){const start=html.indexOf('function '+name+'(');vm.runInContext(html.slice(start,html.indexOf('\n',start)),ctx)}
   ctx.applyLifeTower(3);ctx.applyLifeTower(2);
   assert.equal(u.attack,9);assert.equal(u.max_hp,12);
@@ -411,6 +483,13 @@ async function testInlineDeployTarget(){
   assert(!ctx.deployTargetOptions(source,{...effect,exclude_self:true}).includes(source));
   ctx.openDeployTargetSelect(source,effect,1);ctx.s.shop=[];await ctx.window.chooseDeployTarget(ctx.s.deployTarget._options.indexOf(shop));assert.equal(applied,2,'removed targets must not receive buffs');
   loadFunctions(ctx,['tickPrep']);ctx.tickPrep();assert.equal(ctx.s.prepSeconds,10,'target selection pauses prep timer');
+  let transformed=null,merges=0;
+  ctx.transformUnitInto=(unit,target,golden)=>{transformed={unit,target,golden}};ctx.tryCombineTriples=()=>merges++;
+  ctx.s.shop=[shop,{card_type:'skill'}];loadFunctions(ctx,['openTransformSelect']);
+  ctx.openTransformSelect(source,true);
+  assert(!ctx.s.deployTarget._options.includes(source));assert(ctx.s.deployTarget._options.includes(shop));assert(ctx.s.deployTarget._options.includes(other));
+  await ctx.window.chooseDeployTarget(ctx.s.deployTarget._options.indexOf(shop));
+  assert.equal(transformed.unit,source);assert.equal(transformed.target,shop);assert.equal(transformed.golden,true);assert.equal(merges,1);assert.equal(ctx.s.deployTarget,null);
 }
 
 
@@ -479,3 +558,238 @@ function testOffboardEventSlots(){
 }
 
 (async()=>{await testGuideApiOldServerMessage();await testLobbyHealthWaitsForPlayback();await testSnowVanguardAndCliffheart();testOffboardEventSlots();testComboAndConsumedVenomBadges();await testBlockAnimationAndKjeragUI();testPoolOriginInheritance();await testInlineDeployTarget();await testBackgroundMusic();testPrepSummon();testPhantomExternalMechanisms();testHealthLockInheritance();testSummonVisualOrder();await testLifeTowerDropRoutes();testAegirGameBonus();testLifeTowerExpiry();await testComboPlaybackAndSeaKeywords();await testAnimation('bullet_batch',1);await testAnimation('w_barrage',3);await testAnimation('w_barrage',3,2);await testSelling();testGuard();for(const skip of [false,true]){await testBattleMerge(skip);await testBattleMerge(skip,1)}testTripleHints();testSaleOptions();testDeadUnitsStayHidden();testAssimilatedUnitsStayRemoved();await testPointerRelease();await testTutorialRules();await testTripleAnimationQueue();console.log('PASS: bullets, sales, guard, battle merge, triple hints and pointer release/cancel/blur')})().catch(e=>{console.error(e);process.exitCode=1});
+
+
+(async function testSunlitNod(){
+  const skill={id:'sunlit_nod_2',name:'耀阳颔首.2',card_type:'skill',effect:'sunlit_nod',shield_bonus_cap:2};
+  const state={shopLevel:2,cards:[skill],bench:Array(12).fill(null),board:[{shield:true},{shield:true},{shield:true},{}]};
+  const ctx=vm.createContext({s:state,emptyBench:()=>state.bench.findIndex(c=>!c),cloneData:structuredClone,compact:a=>a.filter(Boolean),log(){},draw(){},triggerPlayerSupports(){},applyClientBuff(u,a,h){u.attack=(u.attack||0)+a;u.max_hp=(u.max_hp||0)+h}});
+  loadFunctions(ctx,['grantSunlitNod','triggerRecruit','useBenchSkill']);
+  ctx.triggerRecruit({name:'流星',recruit:{type:'gain_sunlit_nod',count:1}});
+  assert.equal(state.bench.filter(Boolean).length,1);
+  await ctx.useBenchSkill(0,true);
+  assert(state.board.every(u=>u.attack===3&&u.max_hp===3));
+  state.board.forEach(u=>u.shield=false);state.bench[0]=skill;
+  await ctx.useBenchSkill(0,true);assert(state.board.every(u=>u.attack===4));
+  const order=[];state.gold=3;state.shop=[{id:'Meteor',name:'流星',card_type:'unit'}];
+  Object.assign(ctx,{UNIT_CARD_COST:3,api:async()=>({card:{},spent:3}),syncPlayer(){},recordGoldSpent(){},triggerRecruit:u=>order.push('recruit:'+u.id),tryCombineTriples:()=>order.push('merge')});
+  loadFunctions(ctx,['buyShopIndex']);await ctx.buyShopIndex(0);
+  assert.deepEqual(order,['recruit:Meteor','merge']);
+
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(async function testRecruitBeforeActualTriple(){
+  for(const thirdId of ['Meteor','Phantom']){
+    const meteor={id:'Meteor',name:'流星',card_type:'unit',tier:2,recruit:{type:'gain_sunlit_nod',count:1}};
+    const skill={id:'sunlit_nod_2',card_type:'skill'};
+    const state={gold:3,shopLevel:2,cards:[skill],board:[],bench:[structuredClone(meteor),structuredClone(meteor),...Array(10).fill(null)],shop:[thirdId==='Meteor'?structuredClone(meteor):{id:'Phantom',card_type:'unit',tier:3}]};
+    const ctx=vm.createContext({s:state,UNIT_CARD_COST:3,api:async()=>({card:{},spent:3}),syncPlayer(){},recordGoldSpent(){},log(){},draw(){},cloneData:structuredClone,emptyBench:()=>state.bench.findIndex(c=>!c),pad:a=>a.filter(Boolean),baseUnitById:()=>meteor,captureTripleSources:()=>[],queueTripleAnimation(){},goldenCopy:base=>({...base,golden:true,recruit:{type:'gain_sunlit_nod',count:2}})});
+    loadFunctions(ctx,['grantSunlitNod','triggerRecruit','collectMergePieces','phantomCanReplace','findTripleMerge','tryCombineTriples','buyShopIndex']);
+    await ctx.buyShopIndex(0);
+    assert.equal(state.bench.filter(u=>u?.golden).length,1);
+    assert.equal(state.bench.filter(u=>u?.id==='sunlit_nod_2').length,thirdId==='Meteor'?1:0);
+  }
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(function testProvisoShieldSupport(){
+  for(const amount of [1,2]){
+    const source={shield:true,support:{type:'shield_team_attack',attack:amount}},ally={shield:true},spent={shield:false,mechanics:['shield']},reserve={shield:true};
+    const ctx=vm.createContext({s:{board:[source,ally,spent],bench:[reserve],shop:[reserve]},compact:a=>a.filter(Boolean),applyClientBuff:(u,a,h)=>{u.attack=(u.attack||0)+a;assert.equal(h,0)}});
+    loadFunctions(ctx,['triggerPlayerSupports']);ctx.triggerPlayerSupports();
+    assert.equal(source.attack,amount);assert.equal(ally.attack,amount);assert.equal(spent.attack,undefined);assert.equal(reserve.attack,undefined);
+  }
+})();
+
+(function testAllianceSupport(){
+ const target={id:'Fang',card_type:'unit',faction:'卡西米尔'},other={id:'Flametail',card_type:'unit',faction:'卡西米尔',recruit:{type:'gain_alliance_support',count:1}},sk={effect:'alliance_support',effect_value:4};
+ const state={bench:[sk],cards:[target,other,{id:'token',card_type:'unit',faction:'卡西米尔',summon_only:true}]};const order=[];
+ const ctx=vm.createContext({s:state,cloneData:structuredClone,applyClientBuff:(u,a,h)=>{u.attack=a;u.max_hp=h},triggerRecruit:()=>order.push('recruit'),triggerPlayerSupports(){},tryCombineTriples:()=>order.push('merge'),draw(){},log(){}});
+ loadFunctions(ctx,['useAllianceSupport']);ctx.useAllianceSupport(0,target);
+ assert.equal(target.attack,4);assert.equal(target.max_hp,4);assert.equal(state.bench[0].id,'Flametail');assert.deepEqual(order,['merge']);
+})();
+
+(async function testLockedShopRefill(){
+ const kept={id:'old',attack:100},state={shopLocked:true,shopSlots:4,shop:[kept,null,null,{id:'last'}]},calls=[];
+ const ctx=vm.createContext({s:state,api:async path=>{calls.push(path);return [{id:'new1'},{id:'new2'}]}});
+ loadFunctions(ctx,['replenishShop']);await ctx.replenishShop();
+ assert.equal(state.shop[0],kept);assert.equal(state.shop[0].attack,100);assert.equal(state.shop[1].id,'new1');assert.equal(state.shop[2].id,'new2');assert.deepEqual(calls,['/api/shop?count=2']);assert.equal(state.shopLocked,false);
+ state.shopLocked=true;await ctx.replenishShop();assert.equal(calls.length,1);
+})();
+
+(function testAiStrategicHelpers(){
+ const code=fs.readFileSync('arena.js','utf8'),part=code.slice(code.indexOf('    function strategicValue('),code.indexOf('    function score('));
+ const team=[{initiative:{},faction:'炎'},{initiative:{},faction:'炎'},{legacy:{},faction:'炎'}];
+ const ctx=vm.createContext({s:{board:team},compact:a=>a.filter(Boolean),owned:()=>team,plan:{core:['core'],transition:['temporary']},score:()=>10});vm.runInContext(part,ctx);
+ assert(ctx.strategicValue({initiative_multiplier:2})>ctx.strategicValue({logistics_multiplier:2}));
+ team.push({initiative_multiplier:2});assert(ctx.strategicValue({initiative_multiplier:2})<0);
+ assert(ctx.skillTargetScore({id:'core',tier:2})>ctx.skillTargetScore({id:'temporary',tier:5}));
+ const seasons={effect:'four_seasons',effect_value:6};
+ const nian={name:'年',faction:'炎',attack:1000,max_hp:1000,morale:{type:'self_buff',max_hp:2}};
+ const chen={name:'陈',faction:'炎',attack:7,max_hp:20,cleave:true,morale:{type:'team_attack_buff',attack:1}};
+ const chong={name:'重岳',faction:'炎',attack:7,max_hp:5,morale:{type:'faction_team_buff',faction:'炎',attack:1,max_hp:1}};
+ team.splice(0,team.length,nian,chen,chong,{faction:'炎'},{faction:'任意'},{faction:'炎'},{faction:'炎'});
+ assert(ctx.skillTargetScore(chen,seasons)>ctx.skillTargetScore(nian,seasons),'Chen should beat a heavily buffed Nian');
+ assert(ctx.skillTargetScore(chong,seasons)>ctx.skillTargetScore(nian,seasons),'Chongyue should spread seasons growth');
+ const normal=ctx.skillTargetScore(chong,seasons);
+ chong.morale={...chong.morale,attack:2,max_hp:2};chong.golden=true;
+ assert(ctx.skillTargetScore(chong,seasons)>normal,'golden morale improves marginal value');
+ team[3].logistics_multiplier=2;
+ assert(ctx.skillTargetScore(chong,seasons)>normal,'logistics repeats contribute to growth');
+})();
+
+(async function testNetworkRetryIdentity(){
+ const calls=[];let count=0;
+ const ctx=vm.createContext({crypto:{randomUUID:()=> 'same-action'},setTimeout:fn=>fn(),fetch:async(url,opts)=>{calls.push(opts.headers['X-Request-Id']);if(++count<3)throw TypeError('Failed to fetch');return {ok:true,status:200,text:async()=>'{"ok":true}'}}});
+ vm.runInContext(fs.readFileSync('network.js','utf8'),ctx);
+ assert.equal((await ctx.requestJSON('/api/buy',{method:'POST',body:'{}'})).ok,true);
+ assert.deepEqual(calls,['same-action','same-action','same-action']);
+ count=0;ctx.fetch=async()=>{count++;return {ok:false,status:400,text:async()=>'{"error":"金币不足"}'}};
+ await assert.rejects(ctx.requestJSON('/api/buy',{method:'POST',body:'{}'}),/金币不足/);assert.equal(count,1);
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(function testCommanderRewardExceedsBenchLimit(){
+ const code=fs.readFileSync('arena.js','utf8'),state={board:[],bench:[{id:'occupied'}]};let draws=0;
+ const ctx=vm.createContext({window:{},arena:{},tryCombineTriples(){},s:state,compact:a=>(a||[]).filter(Boolean),triggerPrepSummon(){},triggerClientBloodbattle(){},triggerPlayerSupports(){},syncPlayer(){},draw:()=>draws++,refreshCommanderBlessings(){},handAppendSlot:()=>state.bench.length,emptyBench:()=>-1,log(){}});
+ vm.runInContext(code.slice(code.indexOf('  const pendingCommanderRewards='),code.indexOf('  async function preparation()')),ctx);
+ vm.runInContext("pendingCommanderRewards.push({id:'reward',name:'金卡',golden:true})",ctx);
+ ctx.draw();assert.equal(state.bench[0].id,'occupied');assert.equal(state.bench[1].id,'reward');
+ ctx.draw();assert.equal(state.bench.length,2);assert.equal(draws,2);
+ vm.runInContext("currentCommander={id:'chen'};s.shopLevel=4;s.phase='备战'",ctx);
+ const unit={attack:2};
+ assert.equal(ctx.window.commanderDisplayAttack(unit,'board'),6);
+ assert.equal(ctx.window.commanderDisplayAttack(unit,'shop'),2);
+ assert.equal(ctx.window.commanderDisplayAttack(unit,'bench'),2);
+ state.phase='战斗中';assert.equal(ctx.window.commanderDisplayAttack(unit,'board'),2);
+ assert.equal(unit.attack,2);
+ vm.runInContext("currentCommander={id:'dobermann',victories:2};s.round=4;s.phase='备战';s.board=[{card_type:'unit',attack:2}];s.shop=[{card_type:'unit',attack:3}];s.bench=[{card_type:'unit',attack:4}]",ctx);
+ ctx.syncDobermannAura();ctx.syncDobermannAura();
+ assert.equal(state.board[0].attack,8);assert.equal(state.shop[0].attack,9);assert.equal(state.bench[0].attack,4);
+ state.round=5;ctx.syncDobermannAura();assert.equal(state.board[0].attack,9);
+ state.bench.push(state.shop.pop());ctx.syncDobermannAura();assert.equal(state.bench[1].attack,3);
+ ctx.syncDobermannAura(true);assert.equal(state.board[0].attack,2);
+})();
+
+(function testAngelBlessingDynamicStatsAndRevive(){
+ const state={round:7,bench:[]};let morale=0;
+ const ctx=vm.createContext({s:state,triggerClientMorale:()=>morale++,triggerPlayerSupports(){},draw(){}});
+ vm.runInContext(html.slice(html.indexOf('function sufferingName('),html.indexOf('function skillTop(')),ctx);
+ loadFunctions(ctx,['applyClientBuff']);
+ for(const kind of ['X','Y','Z']){
+   const card={effect:'commander_angel_blessing',blessing_kind:kind};state.bench=[card];
+   ctx.refreshCommanderBlessings();assert.equal(card.effect_value,21);assert.equal(card.bullet_strength,kind==='Y'?7:0);
+   assert.equal(card.name,{X:'“你须直面”',Y:'“你须愧悔”',Z:'“你须偿还”'}[kind]);assert(card.icon.endsWith('.png'));
+   state.round=8;ctx.refreshCommanderBlessings();assert.equal(card.effect_value,24);
+   const target={card_type:'unit',attack:2,max_hp:3,current_hp:3,bullet_strength:1};
+   ctx.useCommanderBlessing(0,target);
+   assert.equal(target.attack,26);assert.equal(target.max_hp,27);assert.equal(target.current_hp,27);
+   assert.equal(target.bullet_strength,kind==='Y'?9:1);assert.equal(!!target.revive,kind==='Z');assert.equal(state.bench[0],null);
+   state.round=7;
+ }
+ assert.equal(morale,3,'each blessing triggers morale via the existing buff path');
+})();
+
+(function testDeliveryPlaybackPreservesSlots(){
+ const unit={id:'selected',battle_position:2},other={id:'summon'},state={board:[null,null,unit],enemy:[]};
+ const ctx=vm.createContext({s:state,cloneData:structuredClone});
+ vm.runInContext(extract('function applyDeliveryEvent(', 'async function animateDeliveryStore('),ctx);
+ assert(ctx.applyDeliveryEvent({type:'delivery_store',side:'left',slot:3}));assert.equal(state.board[2],null);
+ state.board[2]=other;
+ ctx.applyDeliveryEvent({type:'delivery_return',side:'left',slot:1,unit});
+ assert.equal(state.board[0].id,'selected');assert.equal(state.board[0].battle_position,2);assert.equal(state.board[2],other);
+})();
+
+(function testErmengardHandLimit(){
+ const state={bench:Array(12).fill({id:'occupied'})};
+ const ctx=vm.createContext({s:state,emptyBench:()=>state.bench.findIndex(x=>!x),log(){}});
+ vm.runInContext(html.slice(html.indexOf('function applyEventLog('),html.indexOf('function applyEventLog(')+html.slice(html.indexOf('function applyEventLog(')).indexOf('\n')),ctx);
+ const event={type:'gain_card',side:'left',from:'命结之秘',card_name:'奖励',card:{id:'reward'}};
+ ctx.applyEventLog(event);assert.equal(state.bench.length,12);assert(state.bench.every(c=>c.id==='occupied'));
+ state.bench[3]=null;ctx.applyEventLog(event);assert.equal(state.bench[3].id,'reward');
+})();
+
+(async function testQalaisaTargetBuff(){
+ const code=fs.readFileSync('arena.js','utf8');
+ for(const zone of ['board','shop']){
+  const target={id:'target',name:'target',attack:2,max_hp:3};const state={board:[],shop:[]};state[zone]=[target];let buffs=0;
+  const ctx=vm.createContext({s:state,botId:'bot',currentCommander:null,log(){},api:async(url,args)=>{assert.equal(args.target.zone,zone);return {commander:{id:'qalaisa'},amount:4}},applyClientBuff(u,a,h,unused,source){assert.equal(u,target);assert.equal(source,'commander');u.attack+=a;u.max_hp+=h;buffs++}});
+  vm.runInContext(code.slice(code.indexOf('  async function useQalaisaSkill('),code.indexOf('  async function chooseShuTarget(')),ctx);
+  await ctx.useQalaisaSkill(target);assert.equal(target.attack,6);assert.equal(target.max_hp,7);assert.equal(buffs,1);
+ }
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(async function testKaltsitTemporaryFaction(){
+ const code=fs.readFileSync('arena.js','utf8');const target={id:'a',name:'a',faction:'炎',attack:2,max_hp:3,shield:true,revive:true,lock_hp:true};const state={board:[target],round:3};
+ const ctx=vm.createContext({s:state,botId:'bot',currentCommander:null,log(){},cloneData:structuredClone,api:async()=>({commander:{id:'kaltsit'},amount:3}),applyClientBuff(u,a,h){u.attack+=a;u.max_hp+=h}});
+ vm.runInContext(code.slice(code.indexOf('  async function useKaltsitSkill('),code.indexOf('  async function useQalaisaSkill(')),ctx);
+ await ctx.useKaltsitSkill(target);assert.equal(target.faction,'任意');assert.equal(target.attack,5);
+ const start=html.indexOf('function cleanupAfterBattle(');vm.runInContext(html.slice(start,html.indexOf('\n',start)),ctx);
+ const restored=ctx.cleanupAfterBattle(target);assert.equal(restored.faction,'炎');assert.equal(restored.attack,5);assert(restored.shield&&restored.revive&&restored.lock_hp);
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(async function testShamareExchangeNoRecruit(){
+ const code=fs.readFileSync('arena.js','utf8'),old={id:'old'},next={id:'new',recruit:{type:'gain_card'}};
+ const state={round:1,board:[old],shop:[{...next,card_type:'unit'}],bench:[]};
+ const ctx=vm.createContext({window:{},s:state,botId:'bot',currentCommander:{id:'shamare'},cloneData:structuredClone,compact:a=>a.filter(Boolean),pad:a=>a,log(){},draw(){},tryCombineTriples(){},triggerRecruit(){throw Error('交换不应招募')},api:async()=>({exchanged:true,commander:{id:'shamare',exchange_round:1},card:next,offered:old,index:0})});
+ vm.runInContext(code.slice(code.indexOf('  window.tryCommanderSaleExchange='),code.indexOf('  function shuTargets(')),ctx);
+ assert.equal(await ctx.window.tryCommanderSaleExchange('board',0,old),true);assert.equal(state.board[0].id,'new');assert.equal(state.shop[0].id,'old');
+ assert.equal(await ctx.window.tryCommanderSaleExchange('board',0,next),false);
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(function testMuelsyseUnlockTiming(){
+ const unit={locked_until_round:6,golden:true};const ctx=vm.createContext({s:{round:1,bench:[unit]},tryCombineTriples(){}});
+ const start=html.indexOf('function isCardLocked('),end=html.indexOf('function receiveEmergencyCard(',start);
+ vm.runInContext(html.slice(start,end),ctx);
+ for(let round=1;round<=5;round++){ctx.s.round=round;ctx.unlockDeliveredCards();assert.equal(ctx.isCardLocked(unit),true)}
+ ctx.s.round=6;ctx.unlockDeliveredCards();assert.equal(ctx.isCardLocked(unit),false);assert.equal(unit.locked_until_round,undefined);
+})();
+
+(function testGoliathBoardAndHandBuff(){
+ const code=fs.readFileSync('arena.js','utf8'),unit=()=>({card_type:'unit',attack:1,max_hp:2});
+ const state={board:[unit()],bench:[unit(),{card_type:'skill'}],shop:[unit()]};
+ const ctx=vm.createContext({s:state,reward:{goliath_buff:24},compact:a=>a.filter(Boolean),log(){},applyClientBuff(u,a,h){u.attack+=a;u.max_hp+=h}});
+ const start=code.indexOf('    if(reward.goliath_buff){');vm.runInContext(code.slice(start,code.indexOf('\n    }',start)+6),ctx);
+ assert.equal(state.board[0].attack,25);assert.equal(state.bench[0].attack,25);assert.equal(state.shop[0].attack,1);assert.equal(state.bench[1].attack,undefined);
+})();
+
+(function testHandAppendOrder(){
+ const ctx=vm.createContext({s:{bench:[null,{id:'old'},null,{id:'later'},null]}});
+ const start=html.indexOf('function handAppendSlot(');vm.runInContext(html.slice(start,html.indexOf('\n',start)),ctx);
+ assert.equal(ctx.handAppendSlot(),4);ctx.s.bench[4]={id:'new'};assert.equal(ctx.handAppendSlot(),5);
+})();
+
+(function testNecrassOwnedFaction(){
+ const code=fs.readFileSync('arena.js','utf8'),unit=()=>({id:'Necrass',faction:'中立',card_type:'unit'});
+ const state={board:[unit()],bench:[unit(),{id:'other',faction:'炎'}],shop:[unit()]};
+ const ctx=vm.createContext({s:state,currentCommander:{id:'necrass',necrass_awakened:true},compact:a=>a.filter(Boolean)});
+ const start=code.indexOf('  function syncNecrassFaction()');vm.runInContext(code.slice(start,code.indexOf('  const commanderRewardDraw',start)),ctx);
+ ctx.syncNecrassFaction();assert.equal(state.board[0].faction,'任意');assert.equal(state.bench[0].faction,'任意');assert.equal(state.bench[1].faction,'炎');assert.equal(state.shop[0].faction,'中立');
+})();
+
+(async function testRussellPrepBloodbattle(){
+ const code=fs.readFileSync('arena.js','utf8'),unit={attack:2,max_hp:3},shop={attack:5,max_hp:6};
+ const ctx=vm.createContext({s:{board:[unit]},currentCommander:{id:'russell',command_upgrades:['attack','attack','health']},triggerClientBloodbattle:async()=>{},applyClientBuff(u,a,h){u.attack+=a;u.max_hp+=h}});
+ const start=code.indexOf('  const commanderBloodbattle=');vm.runInContext(code.slice(start,code.indexOf('  const unitSupports=',start)),ctx);
+ await ctx.triggerClientBloodbattle(unit,2);assert.equal(unit.attack,8);assert.equal(unit.max_hp,7);
+ await ctx.triggerClientBloodbattle(shop,2);assert.equal(shop.attack,5);
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(function testSeabornOwnerAura(){
+ const code=fs.readFileSync('arena.js','utf8');
+ const card={id:'Skadi Seaborn',attack:2,max_hp:2,guard:true,mechanics:['guard']};
+ const ctx=vm.createContext({s:{phase:'备战',board:[card],bench:[]},currentCommander:{id:'skadi_alter',seaborn_upgrades:['logistics','monsters','shield']},compact:a=>a.filter(Boolean),cloneData:structuredClone});
+ vm.runInContext(code.slice(code.indexOf('  function syncSeabornAura('),code.indexOf('  const seabornPrepSummon=')),ctx);
+ ctx.syncSeabornAura();ctx.syncSeabornAura();assert.equal(card.logistics.attack,2);assert.equal(card.legacy.count,2);assert.equal(card.mechanics.filter(x=>x==='shield').length,1);
+ ctx.syncSeabornAura(true);assert(!card.shield);assert(card.guard);assert(!card.legacy);
+ card.golden=true;ctx.syncSeabornAura();assert.equal(card.logistics.attack,4);assert.equal(card.legacy.count,4);
+ ctx.currentCommander={id:'chen'};ctx.syncSeabornAura();assert(!card.shield);assert(!card.logistics);assert(card.guard);
+ ctx.currentCommander={id:'skadi_alter',seaborn_upgrades:['summon_growth','venom','revive']};ctx.syncSeabornAura();assert.equal(card.seaborn_summon_growth,2);assert(card.revive&&card.venom);
+})();
+
+(async function testHumusRemoval(){
+ const code=fs.readFileSync('arena.js','utf8'),unit={id:'Courier',card_type:'unit',name:'讯使'},ally={id:'Fang',card_type:'unit'};
+ const s={board:[unit,ally],bench:[],shop:[]};let calls=0;
+ const ctx=vm.createContext({s,compact:a=>a.filter(Boolean),pad:a=>a,botId:'test',log(){},syncPlayer:p=>{s.gold=p.gold},api:async(url,data)=>{calls++;assert.equal(data.target.zone,'board');return {commander:{id:'humus'},player:{gold:6}}}});
+ vm.runInContext(code.slice(code.indexOf('  async function useHumusSkill('),code.indexOf('  async function useQuintusSkill(')),ctx);
+ await assert.rejects(ctx.useHumusSkill({id:'shop'}));assert.equal(calls,0);
+ await ctx.useHumusSkill(unit);assert.equal(s.board.length,1);assert.equal(s.board[0],ally);assert.equal(s.gold,6);assert.equal(calls,1);
+})().catch(e=>{console.error(e);process.exitCode=1});

@@ -11,6 +11,66 @@ def unit(name, **extra):
     return dict(id=name, name=name, attack=1, max_hp=100, current_hp=100, **extra)
 
 
+class CompleteCloneTests(unittest.TestCase):
+    def test_catalog_changes(self):
+        import sqlite3
+        con=sqlite3.connect(':memory:')
+        try:
+            con.executescript(server.SCHEMA_PATH.read_text(encoding='utf8'))
+            for name,tier,attack,hp in [('Clementia',5,5,5),('Specter the Unchained',6,9,9),('Ulpianus',5,6,6)]:
+                self.assertEqual(con.execute('SELECT tier,attack,max_hp FROM unit_cards WHERE id=?',(name,)).fetchone(),(tier,attack,hp))
+            legacy=json.loads(con.execute('SELECT extras_json FROM unit_cards WHERE id=?',('Clementia',)).fetchone()[0])
+            self.assertEqual(legacy['legacy']['count'],3)
+            self.assertEqual(legacy['golden_overrides']['legacy']['count'],6)
+            specter=json.loads(con.execute('SELECT extras_json FROM unit_cards WHERE id=?',('Specter the Unchained',)).fetchone()[0])
+            self.assertTrue(specter['revive'])
+            self.assertEqual(specter['golden_overrides']['battle_start']['count'],2)
+        finally:
+            con.close()
+
+    def test_copied_raid_uses_existing_summon_attack_hook(self):
+        source=unit('Specter',raid={'hits':2},battle_start={'type':'summon_complete_clones','count':1})
+        team=[source]+[None]*6
+        foes=[unit('Enemy')]
+        with patch.object(server,'trigger_summon_raid') as raid:
+            server.apply_battle_start_effects(team,'left',[],foes)
+        self.assertEqual(raid.call_count,1)
+        self.assertEqual(raid.call_args.args[0][1]['raid'],{'hits':2})
+
+    def test_copies_stats_and_external_mechanics_without_recursion(self):
+        source = unit('Specter', mechanics=['revive','lock_hp','combo'],
+                      revive=True, lock_hp=True, combo=True, shield=True,
+                      battle_start={'type':'summon_complete_clones','count':2})
+        source['attack'] = 37
+        team = [source] + [None] * 6
+        events = []
+        server.apply_battle_start_effects(team, 'left', events)
+        self.assertEqual(len([e for e in events if e['type']=='summon']), 2)
+        for clone in team[1:3]:
+            for key in ['attack','max_hp','current_hp','mechanics','revive','lock_hp','combo','shield']:
+                self.assertEqual(clone[key], source[key])
+            self.assertIsNot(clone['mechanics'], source['mechanics'])
+
+    def test_full_board_and_partial_space_use_initial_snapshot(self):
+        for spaces in [0,1]:
+            source = unit('Specter',battle_start={'type':'summon_complete_clones','count':2})
+            source['attack']=9;source['max_hp']=source['current_hp']=9
+            team=[source]+[unit('Filler') for _ in range(6-spaces)]+[None]*spaces
+            events=[]
+            server.apply_battle_start_effects(team,'left',events)
+            self.assertEqual(source['attack'],9*(3-spaces))
+            self.assertEqual(source['max_hp'],9*(3-spaces))
+            self.assertEqual(len([e for e in events if e['type']=='summon']),spaces)
+
+    def test_clones_trigger_summon_watchers(self):
+        source=unit('Specter',faction='阿戈尔',battle_start={'type':'summon_complete_clones','count':1})
+        watcher=unit('Gladiia',aegir_summon_attack_ratio=0.5)
+        watcher['attack']=20
+        team=[source,watcher]+[None]*5
+        server.apply_battle_start_effects(team,'left',[])
+        self.assertEqual(team[2]['attack'],11)
+
+
 class TheoreticalSummonTests(unittest.TestCase):
     def test_theoretical_counts_with_limited_slots(self):
         import copy
@@ -404,6 +464,13 @@ class BulletBatchTests(unittest.TestCase):
             server.perform_attack_action(attacker,0,'left',[attacker],[enemy],events,source_effect=effect)
             self.assertEqual(len([e for e in events if e.get('damage_type')=='collision']),expected)
             self.assertEqual([e['strike'] for e in events if e.get('type')=='combo_strike'],[1,2] if effect is None else [])
+
+    def test_training_grants_combat_combo_without_permanent_flag(self):
+        attacker=unit('Trainee',training_buffs=[{'amount':2,'expires':2},{'amount':4,'expires':2}])
+        events=[]
+        server.perform_attack_action(attacker,0,'left',[attacker],[unit('Enemy')],events)
+        self.assertEqual([e['strike'] for e in events if e.get('type')=='combo_strike'],[1,2])
+        self.assertFalse(attacker.get('combo'))
 
     def test_combo_stops_on_death_and_retargets_after_kill(self):
         attacker=unit('Reaper',combo=True);attacker['current_hp']=1
@@ -810,5 +877,89 @@ class BulletBatchTests(unittest.TestCase):
         events=self.run_effect('bullet_damage',shield=True)
         self.assertTrue(any(e.get('projectile')=='bullet' for e in events))
 
+
+
+
+class KazimierzEffectsTests(unittest.TestCase):
+    def test_catapult_temporary_shield_and_distinct_targets(self):
+        import copy
+        for count,amount in [(1,2),(2,4)]:
+            source=unit('Catapult',initiative=dict(type='random_shield_buff',count=count,amount=amount))
+            team=[source,unit('ally'),unit('ally2')];snapshot=copy.deepcopy(team);events=[]
+            server.resolve_one_precombat_effect('initiative',source,0,team,[],'left',events)
+            buffed=[u for u in team if u.get('shield')]
+            self.assertEqual(len(buffed),count)
+            self.assertTrue(all(u['attack']==1+amount and u['max_hp']==100+amount for u in buffed))
+            server.apply_persistent_battle_gains(snapshot,events)
+            self.assertTrue(all(u['attack']==1 and u['max_hp']==100 and not u.get('shield') for u in snapshot))
+
+
+class WildManeLogisticsTests(unittest.TestCase):
+    def test_other_shields_and_golden(self):
+        for amount in (1,2):
+            source=unit('Wild Mane',shield=True,logistics={'type':'shield_count_self_buff','attack':amount,'max_hp':amount})
+            team=[source,unit('shield',shield=True),unit('spent',shield=False),dict(unit('dead',shield=True),current_hp=0)]
+            server.apply_logistics_effects(team,'left',[])
+            self.assertEqual(source['attack'],1+2*amount)
+            self.assertEqual(source['max_hp'],100+2*amount)
+
+
+class KazimierzShieldTests(unittest.TestCase):
+    def test_break_shield_permanent_buff(self):
+        a=unit('enemy');t=unit('target',shield=True);n=unit('Nearl',shield_loss_buff=2);events=[]
+        server.deal_bullet_damage(a,0,'right',[a],[t,n],0,t,10,events)
+        self.assertEqual((t['attack'],t['max_hp'],t['current_hp']),(3,102,102))
+        self.assertFalse(t['shield'])
+        self.assertEqual([e['type'] for e in events if e.get('type') in ('shield_block','permanent_buff')],['shield_block','permanent_buff'])
+    def test_guardian_external_shield_and_limit(self):
+        for limit in (1,2):
+            a=unit('enemy');t=unit('Blemishine',shield=True,guardian={'type':'gain_shield','limit':limit});events=[]
+            server.perform_single_attack(a,0,'left',[a],[t],events,forced_target=(0,t))
+            self.assertEqual(t.get('guardian_shield_count',0),0)
+            for _ in range(limit+1):
+                server.perform_single_attack(a,0,'left',[a],[t],events,forced_target=(0,t))
+            self.assertEqual(t['guardian_shield_count'],limit)
+            self.assertEqual(t['current_hp'],99)
+
+class MoreKazimierzTests(unittest.TestCase):
+    def test_fartooth_break_then_restore_and_team_growth(self):
+        source=unit('Fartooth',faction='卡西米尔',shield=True,initiative={'type':'friendly_bullet_shield','count':3})
+        ally=unit('ally',faction='卡西米尔',shield=True)
+        m=unit('Mlynar',faction='卡西米尔',shield=True,shield_loss_team_buff=1)
+        team=[source,ally,m];events=[]
+        server.resolve_one_precombat_effect('initiative',source,0,team,[],'left',events)
+        self.assertEqual(sum(e.get('type')=='shield_block' for e in events),3)
+        self.assertEqual(sum(e.get('type')=='grant_shield' for e in events),3)
+        self.assertTrue(all(u['shield'] and u['attack']==4 and u['max_hp']==103 for u in team))
+    def test_radiant_nearl_does_not_spend_for_external_shield(self):
+        for limit in (2,4):
+            source=unit('radiant',shield=True,before_attack={'type':'missing_shield','shield_limit':limit})
+            server.apply_before_attack(source,0,'left',[source],[])
+            self.assertEqual(source.get('before_attack_shield_count',0),0)
+            for n in range(limit+1):
+                server.consume_shield(source)
+                server.apply_before_attack(source,0,'left',[source],[])
+            self.assertEqual(source['before_attack_shield_count'],limit)
+            self.assertFalse(server.has_shield(source))
+
+class CounterShieldLossTests(unittest.TestCase):
+    def test_counter_break_triggers_correct_team(self):
+        for side in ('left','right'):
+            for amount in (1,2):
+                attacker=unit('attacker',shield=True)
+                own=unit('own Mlynar',shield_loss_team_buff=amount)
+                nearl=unit('own Nearl',shield_loss_buff=2)
+                target=unit('target')
+                enemy=unit('enemy Mlynar',shield_loss_team_buff=9)
+                events=[]
+                server.perform_single_attack(attacker,0,side,[attacker,own,nearl],[target,enemy],events,forced_target=(0,target))
+                self.assertFalse(attacker['shield'])
+                self.assertEqual(attacker['attack'],1+amount+2)
+                self.assertEqual(own['attack'],1+amount)
+                self.assertEqual(target['attack'],1)
+                self.assertEqual(enemy['attack'],1)
+                buffs=[e for e in events if e.get('type')=='permanent_buff']
+                self.assertTrue(buffs)
+                self.assertTrue(all(e['side']==side for e in buffs))
 
 if __name__=='__main__': unittest.main()

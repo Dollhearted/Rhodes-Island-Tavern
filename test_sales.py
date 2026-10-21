@@ -34,15 +34,14 @@ class PoolTests(unittest.TestCase):
         with server.db() as con:self.assertEqual(con.execute('SELECT COUNT(*) FROM shop_purchases').fetchone()[0],0)
 
     def test_exact_star_probabilities(self):
-        rows=[(100,),(45,55),(28,34,38),(19,23,26,32),(14,17,19,24,26),(12,15,16,21,22,14)]
-        for level,weights in enumerate(rows,1):
+        for level in range(1,7):
             with server.db() as con:con.execute('UPDATE players SET shop_level=?',(level,))
-            seen=[]
             def choose(population,weights,k):
-                seen.append(tuple(weights));return [population[0]]
+                self.assertTrue(all(server.card_tier(c)<=level for c in population))
+                self.assertEqual(weights,[13-server.card_tier(c) for c in population])
+                return [population[0]]
             with patch.object(server.random,'choices',side_effect=choose):server.shop(1)
-            self.assertEqual(seen[0],weights)
-        self.assertEqual(server.POOL_COPIES,{1:22,2:19,3:16,4:13,5:10,6:7})
+        self.assertEqual(server.POOL_COPIES,{1:12,2:11,3:10,4:9,5:8,6:7})
 
     def test_concurrent_last_copy(self):
         from concurrent.futures import ThreadPoolExecutor
@@ -118,7 +117,7 @@ class SaleTests(unittest.TestCase):
                     with patch.object(server.random,'choice',side_effect=pick):server.trigger_legacy(ulpianus,0,'left',team,[],[])
                     units=[u for u in team if u];self.assertEqual(len(units),2)
                     self.assertTrue(all(u['attack']==5 and u['max_hp']==4 for u in units))
-                    specter=server.apply_golden_unit(card('Specter the Unchained'));team=[None]*7
+                    specter=server.apply_golden_unit(card('Clementia'));team=[None]*7
                     server.trigger_legacy(specter,0,'left',team,[],[])
                     self.assertEqual(len([u for u in team if u and u['guard']]),6)
                     lumen=card('Lumen');a=card('Deep Sea Slider');b=card('Deep Sea Slider');far=card('Deep Sea Slider')
@@ -238,7 +237,7 @@ class SaleTests(unittest.TestCase):
                     discount=0
                     for turn in range(6):
                         result=server.settle_battle({'winner':'left','loss_damage':0,'logistics_gold':20},turn+1)
-                        discount+=2+turn//2+(level>=4)
+                        discount+=3 if turn+2>=5 else 2
                         self.assertEqual(result['shop_discount'],discount)
                         self.assertEqual(result['upgrade_cost'],max(0,base-discount))
                         self.assertEqual(result['victory_bonus'],0)

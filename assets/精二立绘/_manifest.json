@@ -1818,7 +1818,7 @@
     "id": "Ulpianus",
     "name": "乌尔比安",
     "english_name": "Ulpianus",
-    "tier": 6,
+    "tier": 5,
     "faction": "阿戈尔",
     "status": "ok",
     "source_file": "立绘_乌尔比安_2.png",
@@ -1872,7 +1872,7 @@
     "id": "Specter the Unchained",
     "name": "归溟幽灵鲨",
     "english_name": "Specter the Unchained",
-    "tier": 5,
+    "tier": 6,
     "faction": "阿戈尔",
     "status": "ok",
     "source_file": "立绘_归溟幽灵鲨_2.png",
@@ -2500,5 +2500,389 @@
     "file": "真银斩_技能.png",
     "link": "真银斩_技能.png",
     "note": "PRTS 银灰第三技能图标；保留原始比例完整显示"
+  },
+  {
+    "id": "Fang",
+    "name": "芬",
+    "tier": 1,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_芬_1.png",
+    "url": "https://media.prts.wiki/a/af/%E7%AB%8B%E7%BB%98_%E8%8A%AC_1.png",
+    "file": "芬_普通.webp",
+    "thumb": "芬_普通.webp",
+    "webp": "芬_普通.webp",
+    "link": "芬_普通.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 91680,
+    "crop_box": [
+      325,
+      37,
+      655,
+      531
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。该干员无精二，使用普通立绘。"
+  },
+  {
+    "id": "Gravel",
+    "name": "砾",
+    "tier": 1,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_砾_2.png",
+    "url": "https://media.prts.wiki/6/62/%E7%AB%8B%E7%BB%98_%E7%A0%BE_2.png",
+    "file": "砾_精二.webp",
+    "thumb": "砾_精二.webp",
+    "webp": "砾_精二.webp",
+    "link": "砾_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 130476,
+    "crop_box": [
+      470,
+      80,
+      941,
+      785
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Catapult",
+    "name": "空爆",
+    "tier": 2,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_空爆_1.png",
+    "url": "https://media.prts.wiki/8/87/%E7%AB%8B%E7%BB%98_%E7%A9%BA%E7%88%86_1.png",
+    "file": "空爆_普通.webp",
+    "thumb": "空爆_普通.webp",
+    "webp": "空爆_普通.webp",
+    "link": "空爆_普通.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 84638,
+    "crop_box": [
+      340,
+      23,
+      669,
+      516
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。该干员无精二，使用普通立绘。"
+  },
+  {
+    "id": "Meteor",
+    "name": "流星",
+    "tier": 2,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_流星_2.png",
+    "url": "https://media.prts.wiki/b/ba/%E7%AB%8B%E7%BB%98_%E6%B5%81%E6%98%9F_2.png",
+    "file": "流星_精二.webp",
+    "thumb": "流星_精二.webp",
+    "webp": "流星_精二.webp",
+    "link": "流星_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 139290,
+    "crop_box": [
+      541,
+      173,
+      1038,
+      918
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Nearl",
+    "name": "临光",
+    "tier": 4,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_临光_2.png",
+    "url": "https://media.prts.wiki/5/5f/%E7%AB%8B%E7%BB%98_%E4%B8%B4%E5%85%89_2.png",
+    "file": "临光_精二.webp",
+    "thumb": "临光_精二.webp",
+    "webp": "临光_精二.webp",
+    "link": "临光_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 122554,
+    "crop_box": [
+      728,
+      766,
+      1203,
+      1479
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Platinum",
+    "name": "白金",
+    "tier": 4,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_白金_2.png",
+    "url": "https://media.prts.wiki/7/77/%E7%AB%8B%E7%BB%98_%E7%99%BD%E9%87%91_2.png",
+    "file": "白金_精二.webp",
+    "thumb": "白金_精二.webp",
+    "webp": "白金_精二.webp",
+    "link": "白金_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 130188,
+    "crop_box": [
+      889,
+      233,
+      1657,
+      1385
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Whislash",
+    "name": "鞭刃",
+    "tier": 4,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_鞭刃_2.png",
+    "url": "https://media.prts.wiki/4/4a/%E7%AB%8B%E7%BB%98_%E9%9E%AD%E5%88%83_2.png",
+    "file": "鞭刃_精二.webp",
+    "thumb": "鞭刃_精二.webp",
+    "webp": "鞭刃_精二.webp",
+    "link": "鞭刃_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 140768,
+    "crop_box": [
+      808,
+      653,
+      1430,
+      1586
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Ashlock",
+    "name": "灰毫",
+    "tier": 3,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_灰毫_2.png",
+    "url": "https://media.prts.wiki/3/37/%E7%AB%8B%E7%BB%98_%E7%81%B0%E6%AF%AB_2.png",
+    "file": "灰毫_精二.webp",
+    "thumb": "灰毫_精二.webp",
+    "webp": "灰毫_精二.webp",
+    "link": "灰毫_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 123506,
+    "crop_box": [
+      938,
+      576,
+      1799,
+      1868
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Blemishine",
+    "name": "瑕光",
+    "tier": 4,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_瑕光_2.png",
+    "url": "https://media.prts.wiki/2/2e/%E7%AB%8B%E7%BB%98_%E7%91%95%E5%85%89_2.png",
+    "file": "瑕光_精二.webp",
+    "thumb": "瑕光_精二.webp",
+    "webp": "瑕光_精二.webp",
+    "link": "瑕光_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 166518,
+    "crop_box": [
+      809,
+      724,
+      1451,
+      1686
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Wild Mane",
+    "name": "野鬃",
+    "tier": 2,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_野鬃_2.png",
+    "url": "https://media.prts.wiki/4/4d/%E7%AB%8B%E7%BB%98_%E9%87%8E%E9%AC%83_2.png",
+    "file": "野鬃_精二.webp",
+    "thumb": "野鬃_精二.webp",
+    "webp": "野鬃_精二.webp",
+    "link": "野鬃_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 138708,
+    "crop_box": [
+      790,
+      432,
+      1521,
+      1529
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Fartooth",
+    "name": "远牙",
+    "tier": 5,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_远牙_2.png",
+    "url": "https://media.prts.wiki/2/24/%E7%AB%8B%E7%BB%98_%E8%BF%9C%E7%89%99_2.png",
+    "file": "远牙_精二.webp",
+    "thumb": "远牙_精二.webp",
+    "webp": "远牙_精二.webp",
+    "link": "远牙_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 132992,
+    "crop_box": [
+      752,
+      472,
+      1428,
+      1486
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Flametail",
+    "name": "焰尾",
+    "tier": 5,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_焰尾_2.png",
+    "url": "https://media.prts.wiki/7/7c/%E7%AB%8B%E7%BB%98_%E7%84%B0%E5%B0%BE_2.png",
+    "file": "焰尾_精二.webp",
+    "thumb": "焰尾_精二.webp",
+    "webp": "焰尾_精二.webp",
+    "link": "焰尾_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 127144,
+    "crop_box": [
+      662,
+      287,
+      1284,
+      1220
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Proviso",
+    "name": "但书",
+    "tier": 3,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_但书_2.png",
+    "url": "https://media.prts.wiki/7/78/%E7%AB%8B%E7%BB%98_%E4%BD%86%E4%B9%A6_2.png",
+    "file": "但书_精二.webp",
+    "thumb": "但书_精二.webp",
+    "webp": "但书_精二.webp",
+    "link": "但书_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 137418,
+    "crop_box": [
+      368,
+      231,
+      678,
+      698
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Młynar",
+    "name": "玛恩纳",
+    "tier": 5,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_玛恩纳_2.png",
+    "url": "https://media.prts.wiki/f/f0/%E7%AB%8B%E7%BB%98_%E7%8E%9B%E6%81%A9%E7%BA%B3_2.png",
+    "file": "玛恩纳_精二.webp",
+    "thumb": "玛恩纳_精二.webp",
+    "webp": "玛恩纳_精二.webp",
+    "link": "玛恩纳_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 184826,
+    "crop_box": [
+      706,
+      323,
+      1401,
+      1365
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Nearl the Radiant Knight",
+    "name": "耀骑士临光",
+    "tier": 6,
+    "faction": "卡西米尔",
+    "status": "ok",
+    "source_file": "立绘_耀骑士临光_2.png",
+    "url": "https://media.prts.wiki/e/ec/%E7%AB%8B%E7%BB%98_%E8%80%80%E9%AA%91%E5%A3%AB%E4%B8%B4%E5%85%89_2.png",
+    "file": "耀骑士临光_精二.webp",
+    "thumb": "耀骑士临光_精二.webp",
+    "webp": "耀骑士临光_精二.webp",
+    "link": "耀骑士临光_精二.webp",
+    "dim": [
+      480,
+      720
+    ],
+    "webp_bytes": 155652,
+    "crop_box": [
+      729,
+      573,
+      1520,
+      1759
+    ],
+    "note": "PRTS 官方立绘；2:3 人物居中裁剪，顶部标签避让。"
+  },
+  {
+    "id": "Clementia",
+    "name": "克莱门莎",
+    "tier": 5,
+    "faction": "阿戈尔",
+    "file": "克莱门莎_精二.png",
+    "url": "https://media.prts.wiki/c/c2/立绘_克莱门莎_2.png",
+    "note": "PRTS 精二立绘；卡面与头像分别通过 CSS 裁切"
   }
 ]
