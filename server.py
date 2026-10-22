@@ -1095,13 +1095,14 @@ def resolve_precombat_phase(phase, left, right, start_side, events):
                 break
         side="right" if side=="left" else "left"
 
-def summon_complete_clones(source, index, team, side, events, count, foes=None):
+def summon_complete_clones(source, index, team, side, events, count, foes=None, painting=False):
     """Copy the initial combat state; failed summons grant that snapshot's stats."""
     template = copy.deepcopy(source)
     template.pop("_summon_tail", None)
     for _ in range(count):
         slot = summon_slot_for(team, index)
         if slot is None:
+            if painting: break
             count_blocked_aegir_summon(template, side, team, events)
             apply_unit_buff(source, template["attack"], template["max_hp"],
                             unit_index=index, side=side, events=events,
@@ -1112,21 +1113,25 @@ def summon_complete_clones(source, index, team, side, events, count, foes=None):
                            "current_hp": source["current_hp"], "source_effect": "clone_absorb"})
             continue
         clone = copy.deepcopy(template)
-        clone["summoned_by_phase"] = True
+        clone["summoned_by_phase"] = not painting
+        clone["_skip_battle_start"] = True
+        clone.pop("dusk_copy_round", None)
         place_summon(clone, source, index, team)
         team[slot] = clone
         events.append({"type": "summon", "side": side, "slot": slot + 1,
                        "from": source["name"], "from_slot": index + 1,
                        "unit": copy.deepcopy(clone)})
         trigger_sea_summon_buff(clone, slot, side, team, events)
-        if foes is not None:
+        if foes is not None and not painting:
             trigger_summon_raid((slot, clone), side, team, foes, events)
 
 
 def apply_battle_start_effects(team, side, events, foes=None):
     # Only units present at entry trigger battle-start effects, never their copies.
     for idx,u in list(enumerate(team)):
-        if not u or team[idx] is not u or u.get("current_hp", 0) <= 0: continue
+        if not u or team[idx] is not u or u.get("current_hp", 0) <= 0 or u.get("_skip_battle_start"): continue
+        if u.get("dusk_copy_round") and u.get("dusk_copy_round") == u.get("battle_round"):
+            summon_complete_clones(u, idx, team, side, events, 1, foes, painting=True)
         eff=u.get("battle_start") or {}
         if eff.get("type") == "summon_complete_clones":
             summon_complete_clones(u, idx, team, side, events, int(eff.get("count", 1)), foes)
@@ -1202,6 +1207,14 @@ def count_blocked_aegir_summon(unit, side, team, events):
         grant_aegir_game_attack(source,side,team,events,int(source["aegir_summon_game_attack"]))
 
 def trigger_sea_summon_buff(unit, slot, side, team, events):
+    commander=(_battle_commanders.get() or {}).get(side)
+    if commander and commander.get('id')=='mudrock':
+        amount=1+max(1,int(commander.get('_shop_level',1)))
+        unit['guard']=True
+        unit['mechanics']=list(dict.fromkeys(unit.get('mechanics',[])+['guard']))
+        events.append(dict(type='grant_guard',side=side,slot=slot+1))
+        apply_unit_buff(unit,amount,amount,unit_index=slot,side=side,events=events,source_effect='mudrock_summon',team=team)
+        events.append(dict(type='team_buff',side=side,slot=slot+1,attack=unit['attack'],max_hp=unit['max_hp'],current_hp=unit['current_hp'],source_effect='mudrock_summon',**{'from':'泥岩','to':unit['name']}))
     if not unit.get('_seaborn_base'):sync_seaborn_aura(unit,(_battle_commanders.get() or {}).get(side))
     for i,watcher in enumerate(team):
         if watcher is not unit and can_receive_buff(watcher) and watcher.get('seaborn_summon_growth'):
@@ -1901,6 +1914,34 @@ def commander_delivery(commander,side,team,foes,events):
 
 
 @atomic_effect
+def commander_unity(commander,side,team,foes,round_number,events):
+    living=[(i,u) for i,u in enumerate(team) if u and u.get('current_hp',0)>0 and can_receive_buff(u)]
+    if not living:return
+    if commander.get('unity_mode')=='empathy':
+        amount=2+2*(max(0,int(commander.get('gold_spent',0)))//10)
+        targets=[min(living,key=lambda item:float(item[1].get('battle_position',item[0])))]
+    else:
+        amount=max(1,int(commander.get('_shop_level',1)))
+        targets=random.sample(living,min(amount,len(living)))
+    for i,u in targets:
+        apply_unit_buff(u,amount,amount,unit_index=i,side=side,events=events,source_effect='amiya_unity',team=team)
+        events.append(dict(type='team_buff',side=side,slot=i+1,attack=u['attack'],max_hp=u['max_hp'],current_hp=u['current_hp'],attack_gain=amount,max_hp_gain=amount,source_effect='amiya_unity',**{'from':'阿米娅','to':u['name']}))
+
+
+@atomic_effect
+def commander_iron_will(commander,side,team,foes,round_number,events):
+    living=[(i,u) for i,u in enumerate(team) if u and u.get('current_hp',0)>0 and can_receive_buff(u)]
+    if not living:return
+    i,unit=min(living,key=lambda item:float(item[1].get('battle_position',item[0])))
+    unit['combo']=True;unit['lock_hp']=True
+    unit['mechanics']=list(dict.fromkeys(unit.get('mechanics',[])+['combo','lock_hp']))
+    events.extend([dict(type='grant_combo',side=side,slot=i+1),dict(type='grant_lock_hp',side=side,slot=i+1)])
+    amount=max(1,int(round_number))+max(0,int(commander.get('victories',0)))
+    apply_unit_buff(unit,amount,amount,unit_index=i,side=side,events=events,source_effect='commander_iron_will',team=team)
+    events.append(dict(type='team_buff',side=side,slot=i+1,attack=unit['attack'],max_hp=unit['max_hp'],current_hp=unit['current_hp'],source_effect='commander_iron_will',**{'from':'森蚺','to':unit['name']}))
+
+
+@atomic_effect
 def commander_expedite(commander,side,team,foes,round_number,events):
     living=sorted([(i,u) for i,u in enumerate(team) if can_receive_buff(u)],key=lambda item:float(item[1].get('battle_position',item[0])))
     targets=living[:1]+(living[-1:] if len(living)>1 else [])
@@ -2048,6 +2089,8 @@ def _tavern_battle(left,right,round_number=1,shop_level=1,right_shop_level=None,
                 apply_chen_aura(u,i,side,events)
                 apply_dobermann_aura(u,i,side,events)
     apply_temporary_logistics_effects(left,"left",events); apply_temporary_logistics_effects(right,"right",events)
+    for unit in left+right:
+        if unit: unit["battle_round"]=round_number
     apply_battle_start_effects(left,"left",events,right)
     apply_battle_start_effects(right,"right",events,left)
     # Snapshot strength before either commander fires; buffs survive their source's death.
@@ -2058,6 +2101,12 @@ def _tavern_battle(left,right,round_number=1,shop_level=1,right_shop_level=None,
         if source.get('id')=='lemuen':source['bullet_strength']=max(0,int(level)-1)
     for side in (turn,'right' if turn=='left' else 'left'):
         source=(_battle_commanders.get() or {}).get(side)
+        if source and source.get('id')=='amiya' and source.get('skill_used_round')==round_number:
+            commander_unity(source,side,left if side=='left' else right,right if side=='left' else left,round_number,events)
+            continue
+        if source and source.get('id')=='eunectes':
+            commander_iron_will(source,side,left if side=='left' else right,right if side=='left' else left,round_number,events)
+            continue
         if source and source.get('id')=='emperor':
             commander_expedite(source,side,left if side=='left' else right,right if side=='left' else left,round_number,events)
             continue
@@ -2080,6 +2129,8 @@ def _tavern_battle(left,right,round_number=1,shop_level=1,right_shop_level=None,
     left_alive=living(left); right_alive=living(right)
     winner="left" if left_alive and not right_alive else ("right" if right_alive and not left_alive else "draw")
     remaining_stars=sum(u.get("stars",1) for _,u in right_alive); loss_damage=0 if winner!="right" else (min(remaining_stars,15) if round_number<10 else remaining_stars)
+    for event in events:
+        if event.get('source_effect')=='amiya_unity' and event.get('side')==winner:event['type']='permanent_buff'
     apply_persistent_battle_gains(persistent_left,events,persistent_event_start)
     apply_persistent_battle_gains(persistent_right,events,persistent_event_start,"right")
     logistics_gold=sum(int(e.get("amount",0) or 0) for e in events if e.get("type")=="gain_gold" and e.get("side")=="left")
@@ -2154,11 +2205,12 @@ def shared_training(data=None):
             cp=data.get('checkpoint')
             if mode in ('save','import') and cp is not None:
                 if not isinstance(cp,dict) or not valid_weights(cp.get('weights')) or type(cp.get('generation')) is not int or cp['generation']<1:raise ValueError('训练记录不合法')
+                if not isinstance(cp.get('commander_weights',{}),dict) or any(not isinstance(k,str) or not valid_weights(v) for k,v in cp.get('commander_weights',{}).items()):raise ValueError('棋手训练参数不合法')
                 if not isinstance(cp.get('history'),list) or len(cp['history'])>100 or len(json.dumps(cp))>5000000:raise ValueError('训练记录过大或格式不正确')
                 if mode=='save' or state['checkpoint'] is None:state['checkpoint']=cp
             if mode=='apply':
                 if not state['checkpoint']:raise ValueError('尚无可应用的训练结果')
-                state['policy']=dict(version=1,weights=state['checkpoint']['weights'],generation=state['checkpoint']['generation'])
+                state['policy']=dict(version=1,weights=state['checkpoint']['weights'],commander_weights=state['checkpoint'].get('commander_weights',{}),generation=state['checkpoint']['generation'])
             if mode=='import' and state['policy'] is None and data.get('policy') is not None:
                 policy=data['policy']
                 if not isinstance(policy,dict) or not valid_weights(policy.get('weights')):raise ValueError('AI 参数不合法')
@@ -2234,6 +2286,16 @@ COMMANDERS.append(dict(id='confessor',name='信仰搅拌机',portrait='assets/co
 COMMANDERS.append(dict(id='fiammetta',name='菲亚梅塔',portrait='assets/commanders/fiammetta-e2.png',artwork='assets/commanders/fiammetta-e2.png',skill=dict(name='陈述苦难',description='陈述苦难：使用后，选取一个苦难，不可连续选择相同的苦难（可超过手牌上限）',active=True,cost=0,cooldown='blessing',icon='assets/commanders/fiammetta-s3.png')))
 COMMANDERS.append(dict(id='exusiai_alter',name='新约能天使',portrait='assets/commanders/exusiai-alter-e2.png',artwork='assets/commanders/exusiai-alter-e2.png',skill=dict(name='使命必达！',description='使命必达！：选择一个友方棋子；棋手本回合获得【先手：将所选棋子装入投递坐标，当场上有空位时，再将其召唤出来，并使其永久获得+1/+1】',active=True,cost=0,limit=1,icon='assets/commanders/exusiai-alter-s3.png')))
 SUFFERING_NAMES={'X':'“你须直面”','Y':'“你须愧悔”','Z':'“你须偿还”'}
+COMMANDERS.append(dict(id='dusk',name='夕',portrait='assets/commanders/dusk-e2.png',artwork='assets/commanders/dusk-e2.png',skill=dict(name='幻画为真',description='选择一个友方棋子，使该棋子本回合获得【战斗开始：召唤自身的完整复制】（被召唤的棋子，无法再触发战斗开始的效果）',active=True,cost=0,limit=1,icon='assets/commanders/dusk-skill.png')))
+
+COMMANDERS.append(dict(id='mudrock',name='泥岩',portrait='assets/commanders/mudrock-e2.png',artwork='assets/commanders/mudrock-e2.png',skill=dict(name='秽壤的血脉',description='战斗中召唤棋子，使其获得嘲讽和+2/+2（升级商店提高+1/+1）',active=False,icon='assets/commanders/mudrock-s3.png')))
+
+COMMANDERS.append(dict(id='malkiewicz',name='马克维茨',portrait='assets/commanders/malkiewicz.png',artwork='assets/commanders/malkiewicz.png',skill=dict(name='商业包装',description='选择一个商店内棋子，使其获得+1/+1并锁定，并置入手牌，1回合后解锁（锁定状态无法使用）',active=True,cost=1,limit=1,icon='assets/commanders/malkiewicz-skill.png')))
+
+COMMANDERS.append(dict(id='eunectes',name='森蚺',portrait='assets/commanders/eunectes-e2.png',artwork='assets/commanders/eunectes-e2.png',skill=dict(name='钢铁意志',description='先手：使最左侧棋子获得连击；锁血和+1/+1（随回合数提升；每胜利1次，则额外+1/+1）',active=False,icon='assets/commanders/eunectes-s3.png')))
+
+COMMANDERS.append(dict(id='amiya',name='阿米娅',portrait='assets/commanders/amiya-guard-e2.png',artwork='assets/commanders/amiya-guard-e2.png',skill=dict(name='众志合一',description='使用后，为友方棋子选择强化效果【哀恸共情】和【慈悲愿景】',active=True,cost=0,limit=1,icon='assets/commanders/amiya-skill.png')))
+
 def suffering_icon(kind):return 'assets/commanders/fiammetta-s'+str({'X':1,'Y':2,'Z':3}[kind])+'.png'
 
 
@@ -2352,6 +2414,20 @@ def use_commander_skill(room,pid,choice=None,target=None):
         commander['skill_used_round']=room['round'];commander['merchant_discount']=0
         commander['skill']=copy.deepcopy(next(c['skill'] for c in COMMANDERS if c['id']=='cannot'))
         return dict(commander=copy.deepcopy(commander),cards=rewards,indices=[i for i,_ in candidates],spent=cost,player=player(pid))
+    if commander and commander['id']=='malkiewicz':
+        if commander.get('skill_used_round')==room['round']:raise ValueError('本回合已使用棋手技能')
+        if not isinstance(target,dict) or target.get('zone')!='shop' or not isinstance(target.get('unit'),dict):raise ValueError('只能选择商店棋子')
+        if int(target.get('hand_count',12))>=12:raise ValueError('备战区已满')
+        with db() as con:
+            con.execute('BEGIN IMMEDIATE')
+            card=claim_shop_unit(con,pid,target['unit'])
+            changed=con.execute('UPDATE players SET gold=gold-1,total_gold_spent=total_gold_spent+1 WHERE id=? AND gold>=1',(pid,)).rowcount
+            if not changed:raise ValueError('金币不足')
+        # Shop gains are not board gains: do not dispatch morale or recruitment.
+        card['attack']+=1;card['max_hp']+=1;card['current_hp']=card['max_hp']
+        card['locked_until_round']=room['round']+1
+        commander['skill_used_round']=room['round']
+        return dict(commander=copy.deepcopy(commander),card=card,spent=1,player=player(pid))
     if commander and commander['id']=='tinman':
         if commander.get('skill_used_round')==room['round']:raise ValueError('本回合已使用棋手技能')
         if not isinstance(target,dict) or not isinstance(target.get('shop'),list):raise ValueError('商店数据无效')
@@ -2514,6 +2590,12 @@ def use_commander_skill(room,pid,choice=None,target=None):
         state=gain_gold(3,pid)
         commander['skill_used_round']=room['round']
         return dict(commander=copy.deepcopy(commander),spent=0,removed_index=index,player=state)
+    if commander and commander['id']=='dusk':
+        if commander.get('skill_used_round')==room['round']:raise ValueError('本回合已使用棋手技能')
+        if not isinstance(target,dict) or target.get('zone')!='board':raise ValueError('只能选择我方棋盘棋子')
+        if not card_by_id(target.get('id')):raise ValueError('棋盘目标无效')
+        commander['skill_used_round']=room['round']
+        return dict(commander=copy.deepcopy(commander),round=room['round'],spent=0)
     if commander and commander['id']=='warfarin':
         if commander.get('skill_used_round')==room['round']:raise ValueError('本回合已使用棋手技能')
         if not isinstance(target,dict) or target.get('zone')!='board':raise ValueError('只能选择我方棋盘棋子')
@@ -2562,8 +2644,12 @@ def use_commander_skill(room,pid,choice=None,target=None):
         commander.update(last_blessing=choice,blessing_pending=dict(kind=choice,due=due))
         card=dict(id='commander_blessing_wait',name=SUFFERING_NAMES[choice],icon=suffering_icon(choice),card_type='skill',effect='commander_blessing_wait',blessing_kind=choice,due_round=due,target_scope='none',hand_limit_exempt=True,description=f'第{due}回合回营时获得苦难，并重新选择（可超过手牌上限）')
         return dict(commander=copy.deepcopy(commander),card=card,spent=0)
-    if not commander or commander['id'] not in ('typhon','exusiai','exusiai_alter','confessor'):raise ValueError('没有可使用的棋手技能')
+    if not commander or commander['id'] not in ('typhon','exusiai','exusiai_alter','confessor','amiya'):raise ValueError('没有可使用的棋手技能')
     if commander.get('skill_used_round')==room['round']:raise ValueError('本回合已使用棋手技能')
+    if commander['id']=='amiya':
+        if choice not in ('empathy','mercy'):raise ValueError('请选择哀恸共情或慈悲愿景')
+        commander['unity_mode']=choice
+        commander['gold_spent']=player(pid).get('total_gold_spent',0)
     if commander['id']=='confessor':
         if choice not in ('left','middle','right'):raise ValueError('请选择左侧、中间或右侧目标')
         commander['examiner_mode']=choice
@@ -2791,7 +2877,7 @@ def arena_save(room):
 
 def arena_public(room):
     for seat in room['seats']:
-        if (seat.get('commander') or {}).get('id')=='confessor':
+        if (seat.get('commander') or {}).get('id') in ('confessor','amiya'):
             seat['commander']['gold_spent']=player(seat['id']).get('total_gold_spent',0)
     seats=sorted(room['seats'],key=lambda p:(p.get('rank') is not None,-p['health'],p['number']))
     if room['finished']: seats=sorted(room['seats'],key=lambda p:p['rank'])
@@ -2851,6 +2937,8 @@ def arena_start(owner,nickname,training=False,difficulty='standard'):
         if difficulty!='standard':
             catalog=available_commanders(COMMANDERS,room['banned_factions'])
             room['commander_draft']=commander_draft(seats,catalog)
+            if training:
+                for seat in seats:commander_action(room,seat['id'],'confirm',random.randrange(4))
         room['next_pairs']=arena_pairings(room)
         arena_save(room)
         return dict(lobby=arena_public(room),player=player(owner))
@@ -2955,7 +3043,7 @@ def arena_resolve(owner,round_number):
                 py=y['prepared'] if y['rank'] is None else y['ghost_state']
                 sx,sy=player(a),player(b)
                 for seat,state in ((x,sx),(y,sy)):
-                    if (seat.get('commander') or {}).get('id')=='confessor':
+                    if (seat.get('commander') or {}).get('id') in ('confessor','amiya'):
                         seat['commander']['gold_spent']=state.get('total_gold_spent',0)
                 result=tavern_battle(copy.deepcopy(px.get('board',[])),copy.deepcopy(py.get('board',[])),round_number,sx['shop_level'],px.get('aegir_attack_bonus',0),px.get('life_tower_effects',[]),px.get('snow_vanguard_effects',[]),dict(py,shop_level=sy['shop_level']),commanders={'left':x.get('commander'),'right':y.get('commander')})
                 for seat,prep,res,opponent in ((x,px,result,y),(y,py,arena_flip_result(result),x)):
@@ -2966,7 +3054,7 @@ def arena_resolve(owner,round_number):
                         seat['commander']['death_count']=int(seat['commander'].get('death_count',0))+sum(e.get('type')=='death' and e.get('side')=='left' for e in res['events'])
                     if (seat.get('commander') or {}).get('id')=='necrass' and res['winner'] in ('left','draw'):
                         seat['commander']['necrass_acceleration']=int(seat['commander'].get('necrass_acceleration',0))+1
-                    if (seat.get('commander') or {}).get('id')=='dobermann' and res['winner']=='left':
+                    if (seat.get('commander') or {}).get('id') in ('dobermann','eunectes') and res['winner']=='left':
                         seat['commander']['victories']=int(seat['commander'].get('victories',0))+1
                     stars=sum(u.get('stars',1) for u in res['right'] if u and u.get('current_hp',0)>0)
                     raw_damage=stars+player(opponent['id'])['shop_level']

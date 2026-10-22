@@ -50,10 +50,10 @@ function loadAgent(seat){return new Promise((resolve,reject)=>{
 })}
 async function loadAgentWithRetry(seat){for(let attempt=0;attempt<4;attempt++){try{return await loadAgent(seat)}catch(e){if(attempt===3)throw e;retryNotice(attempt+1,2000);await new Promise(r=>setTimeout(r,2000))}}}
 async function match(population,game,generation,games,guides){
-  cleanup();let {lobby}=await api('/api/arena/start',{nickname:'训练 AI 0',training:true});
+  cleanup();let {lobby}=await api('/api/arena/start',{nickname:'训练 AI 0',training:true,difficulty:'peril'});
   const seats=[...lobby.seats].sort((a,b)=>a.number-b.number),agents=await Promise.all(seats.map(loadAgentWithRetry));
   if(!guides)guides=agents[0].a.guides();
-  for(let i=0;i<8;i++){agents[i].candidate=(i+game)%8;agents[i].a.configure({weights:population[agents[i].candidate],guides})}
+  for(let i=0;i<8;i++){agents[i].candidate=(i+game)%8;agents[i].commander=seats[i].commander?.id;const base=checkpoint?.commander_weights?.[agents[i].commander];agents[i].weights=base?(agents[i].candidate===0?base:mutate(base)):population[agents[i].candidate];agents[i].a.configure({weights:agents[i].weights,guides})}
   for(let round=1;round<=100;round++){
     const alive=agents.filter(x=>lobby.seats.find(p=>p.id===x.id).health>0);
     // Rotate buying order as well as seat assignment to reduce shared-pool priority bias.
@@ -64,7 +64,7 @@ async function match(population,game,generation,games,guides){
     for(const x of alive)await x.a.result(result.results[x.id],lobby.finished);
     show(`第 ${generation} 代 · 第 ${game+1}/${games} 局 · 第 ${round} 回合\n`+lobby.seats.map(p=>`${p.name}: ${p.health} HP${p.rank?' · #'+p.rank:''}`).join('\n'));
     if(stopped)throw Error('已停止；本代未完成的数据不参与更新，之前保存的结果保留。');
-    if(lobby.finished)return {guides,metrics:agents.map(x=>({candidate:x.candidate,...reward(x.a.inspect().board,guides,lobby.seats.find(p=>p.id===x.id).rank)}))};
+    if(lobby.finished)return {guides,metrics:agents.map(x=>({candidate:x.candidate,commander:x.commander,weights:x.weights,...reward(x.a.inspect().board,guides,lobby.seats.find(p=>p.id===x.id).rank)}))};
     for(const x of agents.filter(x=>lobby.seats.find(p=>p.id===x.id).health>0))await x.a.prepare();
   }
   throw Error('达到 100 回合安全上限，本代不计分；请检查是否出现无法结束的阵容。');
@@ -82,7 +82,10 @@ $('run').onclick=async()=>{
       for(let game=0;game<games;game++){const result=await match(population,game,(checkpoint?.generation||0)+1,games,guides);guides=result.guides;records.push(result.metrics);for(const m of result.metrics)scores[m.candidate]+=m.score/games}
       const winner=scores.indexOf(Math.max(...scores));best=population[winner];
       const entry={generation:(checkpoint?.generation||0)+1,scores,population,records,winner,time:new Date().toISOString()};
-      checkpoint={version:1,generation:entry.generation,weights:best,guides,history:[...(checkpoint?.history||[]),entry].slice(-100)};
+      const commander_weights={...(checkpoint?.commander_weights||{})};
+      const grouped={};for(const m of records.flat())if(m.commander)(grouped[m.commander]??=[]).push(m);
+      for(const [id,results] of Object.entries(grouped))commander_weights[id]=results.sort((a,b)=>b.score-a.score)[0].weights;
+      checkpoint={commander_weights,version:1,generation:entry.generation,weights:best,guides,history:[...(checkpoint?.history||[]),entry].slice(-100)};
       localStorage.setItem('autochess-training-unsynced',JSON.stringify({revision,checkpoint}));
       const saved=await trainingApi({mode:'save',revision,checkpoint});revision=saved.revision;checkpoint=saved.checkpoint;
       localStorage.removeItem('autochess-training-unsynced');

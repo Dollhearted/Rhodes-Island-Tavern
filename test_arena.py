@@ -11,6 +11,106 @@ import server
 
 
 class ArenaTests(unittest.TestCase):
+    def test_amiya_unity_selection_and_persistence(self):
+        room=server.arena_room('human');room['seats'][0]['commander']={'id':'amiya'}
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',choice='invalid')
+        server.use_commander_skill(room,'human',choice='empathy')
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',choice='mercy')
+        room['round']+=1
+        self.assertEqual(server.use_commander_skill(room,'human',choice='mercy')['commander']['unity_mode'],'mercy')
+        base=dict(self.card('U-Official'),attack=1,max_hp=1,current_hp=1,mechanics=[])
+        c={'id':'amiya','skill_used_round':1,'unity_mode':'empathy','gold_spent':20}
+        win=server.tavern_battle([base],[],1,commanders={'left':c})
+        self.assertEqual(win['persistent_left'][0]['attack'],7)
+        foe=dict(base,attack=100,max_hp=100,current_hp=100)
+        loss=server.tavern_battle([base],[foe],1,commanders={'left':c})
+        self.assertEqual(loss['winner'],'right');self.assertEqual(loss['persistent_left'][0]['attack'],1)
+        stale=server.tavern_battle([base],[],2,commanders={'left':c})
+        self.assertEqual(stale['persistent_left'][0]['attack'],1)
+        c=dict(c,unity_mode='mercy')
+        win=server.tavern_battle([copy.deepcopy(base) for _ in range(4)],[],1,3,commanders={'left':c})
+        self.assertEqual(sorted(u['attack'] for u in win['persistent_left'] if u),[1,4,4,4])
+
+    def test_eunectes_leftmost_scaling_and_unique_mechanics(self):
+        first=dict(self.card('Courier'),attack=2,max_hp=5,current_hp=5,battle_position=3)
+        left=dict(self.card('Courier'),attack=2,max_hp=5,current_hp=5,battle_position=-1,combo=True,lock_hp=True,mechanics=['combo','lock_hp'])
+        events=[]
+        server.commander_iron_will({'victories':2},'left',[first,None,left],[],4,events)
+        self.assertEqual((left['attack'],left['max_hp']),(8,11))
+        self.assertEqual(first['attack'],2)
+        self.assertEqual(left['mechanics'].count('combo'),1)
+        self.assertEqual(left['mechanics'].count('lock_hp'),1)
+        self.assertTrue(any(e['type']=='grant_combo' and e['slot']==3 for e in events))
+        events=[];server.commander_iron_will({},'right',[None]*7,[],1,events)
+        self.assertFalse(any(e['type']=='team_buff' for e in events))
+
+    def test_packaging_cost_lock_stock_and_no_morale(self):
+        room=server.arena_room('human');c={'id':'malkiewicz'};room['seats'][0]['commander']=c
+        unit=dict(self.card('Courier'),attack=5,max_hp=8,morale={'type':'self_buff','attack':99,'max_hp':99})
+        target={'zone':'shop','unit':unit,'hand_count':0}
+        before=server.player('human')['gold']
+        for zone in ('board','bench'):
+            with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target=dict(target,zone=zone))
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target=dict(target,hand_count=12))
+        result=server.use_commander_skill(room,'human',target=target)
+        self.assertEqual((result['card']['attack'],result['card']['max_hp']),(6,9))
+        self.assertEqual(result['card']['locked_until_round'],room['round']+1)
+        self.assertEqual(len(result['card']['pool_tokens']),1)
+        self.assertEqual(result['player']['gold'],before-1)
+        self.assertEqual(unit['attack'],5)
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target=target)
+        room['round']+=1
+        with server.db() as con:con.execute('UPDATE players SET gold=0 WHERE id=?',('human',))
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target=target)
+        with server.db() as con:self.assertEqual(con.execute('SELECT COUNT(*) FROM shop_purchases WHERE player_id=?',('human',)).fetchone()[0],1)
+
+    def test_mudrock_all_summons_and_shop_scaling(self):
+        for level in (1,3,6):
+            token=server._battle_commanders.set({'left':{'id':'mudrock','_shop_level':level}})
+            try:
+                for cid in ('Courier','Deep Sea Slider','Truesilver Slash'):
+                    u=self.card(cid);u['current_hp']=u['max_hp'];a,h=u['attack'],u['max_hp'];events=[]
+                    server.trigger_sea_summon_buff(u,0,'left',[u]+[None]*6,events)
+                    self.assertEqual((u['attack'],u['max_hp']),(a+level+1,h+level+1))
+                    self.assertTrue(u['guard']);self.assertEqual(u['mechanics'].count('guard'),1)
+                    self.assertTrue(any(e['type']=='grant_guard' for e in events))
+                enemy=self.card('Courier');enemy['current_hp']=enemy['max_hp'];a=enemy['attack']
+                server.trigger_sea_summon_buff(enemy,0,'right',[enemy]+[None]*6,[])
+                self.assertEqual(enemy['attack'],a);self.assertNotIn('guard',enemy.get('mechanics',[]))
+            finally:server._battle_commanders.reset(token)
+
+    def test_dusk_clone_and_capacity(self):
+        unit=self.card('Courier');unit.update(current_hp=7,max_hp=7,attack=12,dusk_copy_round=1,battle_round=1,shield=True,initiative={'type':'test'})
+        team=[unit]+[None]*6;events=[]
+        server.apply_battle_start_effects(team,'left',events)
+        clones=[u for u in team if u and u is not unit]
+        self.assertEqual(len(clones),1)
+        self.assertEqual(clones[0]['attack'],12)
+        self.assertTrue(clones[0]['shield'])
+        self.assertEqual(clones[0]['initiative'],unit['initiative'])
+        self.assertFalse(clones[0]['summoned_by_phase'])
+        self.assertTrue(clones[0]['_skip_battle_start'])
+        team=[copy.deepcopy(unit) for _ in range(7)];events=[]
+        server.apply_battle_start_effects(team,'left',events)
+        self.assertFalse(events)
+        self.assertEqual(team[0]['attack'],12)
+        unit['battle_round']=2;events=[]
+        server.apply_battle_start_effects([unit]+[None]*6,'left',events)
+        self.assertFalse(events)
+
+    def test_training_assigns_unique_commanders(self):
+        result=server.arena_start('human','训练',training=True,difficulty='peril')
+        room=server.arena_room('human')
+        self.assertTrue(room['commanders_ready'])
+        self.assertEqual(len({p['commander']['id'] for p in room['seats']}),8)
+
+    def test_dusk_target_limits(self):
+        room=server.arena_room('human');room['seats'][0]['commander']={'id':'dusk'}
+        for zone in ['shop','bench']:
+            with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target={'zone':zone,'id':'Courier'})
+        server.use_commander_skill(room,'human',target={'zone':'board','id':'Courier'})
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target={'zone':'board','id':'Courier'})
+
     def test_humus_board_only_once_per_round(self):
         room=server.arena_room('human');c={'id':'humus'};room['seats'][0]['commander']=c
         unit=self.card('Courier');before=server.player('human')['gold']

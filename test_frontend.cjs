@@ -85,7 +85,7 @@ function testRecommendationGuidesAffectAI(){
   const code=fs.readFileSync('arena.js','utf8');
   const unit=(id,name)=>({id,name,card_type:'unit',attack:3,max_hp:3,stars:2,faction:'拉特兰'});
   const chosen=unit('chosen','推荐卡'),bridge=unit('bridge','过渡卡'),other=unit('other','普通卡');
-  const ctx=vm.createContext({s:{cards:[chosen,bridge,other],board:[],bench:[],round:3,hp:50},
+  const ctx=vm.createContext({currentCommander:null,s:{cards:[chosen,bridge,other],board:[],bench:[],round:3,hp:50},
     localStorage:{getItem:key=>key.endsWith('v1')?JSON.stringify({'拉特兰':{name:'自定义',core:['chosen'],transition:['bridge'],note:''}}):null,setItem(){}},
     compact:a=>a.filter(Boolean),owned:()=>[],number:1,profiles:[[1,1,1,1]],hasMark:()=>false,canCompleteTriple:()=>false});
   vm.runInContext(code.slice(code.indexOf('  const guideKey='),code.indexOf('  if(botId){')),ctx);

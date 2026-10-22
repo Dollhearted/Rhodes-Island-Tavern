@@ -122,10 +122,14 @@
       {mode:'right',name:'扫射迎宾仪礼·右',position:'最右侧',icon:'confessor-s2.png'}
     ].map(o=>({...o,damage,description:`先手：对${o.position}的3个棋子造成${damage}点铳弹伤害，下回合重新选择目标`}));
   }
-  async function chooseExaminerMode(){
+  function amiyaOptions(){const amount=2+2*Math.floor(Number(s.totalGoldSpent||0)/10),level=Number(s.shopLevel||1);return [
+    {mode:'empathy',name:'哀恸共情',icon:'amiya-medic-s1.png',description:'先手：使最左侧的棋子获得+'+amount+'/+'+amount+'（每累计消耗10金币，技能提升+2/+2，如果胜利保留属性，下回合重新选择效果）'},
+    {mode:'mercy',name:'慈悲愿景',icon:'amiya-medic-s2.png',description:'先手：随机使'+level+'个友方棋子获得+'+level+'/+'+level+'（数量和属性均随商店等级提升，如果胜利保留属性，下回合重新选择效果）'}];}
+  async function chooseExaminerMode(amiya=false){
     const overlay=document.createElement('div');overlay.className='discover-pop';
-    const options=examinerOptions(s.totalGoldSpent);
+    const options=amiya?amiyaOptions():examinerOptions(s.totalGoldSpent);
     overlay.innerHTML='<div class="discover-box"><h3>铳骑主考官 · 选择本回合目标</h3><p>以战斗开始时的敌方站位为准；不足3个时选取全部。</p><div class="discover-options">'+options.map(o=>`<button class="discover-option" data-mode="${o.mode}" style="white-space:normal;padding:20px"><img src="assets/commanders/${o.icon}" style="width:80px;height:80px;${o.mirror?'transform:scaleX(-1)':''}"><h3>${o.name}</h3><p>${o.description}</p></button>`).join('')+'</div><p data-error></p><button class="btn" data-cancel>取消</button></div>';
+    if(amiya){overlay.querySelector('h3').textContent='众志合一 · 选择本回合强化';overlay.querySelector('p').textContent='本回合获胜才保留技能提供的属性。'}
     const wasBusy=s.busy;s.busy=true;document.body.appendChild(overlay);
     try{
       await new Promise(resolve=>{
@@ -286,10 +290,10 @@
     animatePrepAssimilate=async()=>{};
     let number=1, steps=0, done=false, skippedSkills=new Set(), rejectedShop=new Set();
     const profiles=[[1.4,.7,.8,.8],[.85,1.45,.9,.8],[.9,1,1.5,.8],[1,1,1,1.5],[1.2,1,1.2,1],[1,1.2,1,1.2],[1.1,1.1,1.1,1.1]];
-    let policy=null,trainingGuides=null;
+    let policy=null,commanderPolicies={},trainingGuides=null;
     function validPolicy(p){return Array.isArray(p)&&p.length===6&&p.every(v=>Number.isFinite(v)&&v>=.25&&v<=3)}
 
-    const weights=()=>policy||[...profiles[(number-1)%profiles.length],1,1];
+    const weights=()=>commanderPolicies[currentCommander?.id]||policy||[...profiles[(number-1)%profiles.length],1,1];
     const owned=()=>[...compact(s.board),...s.bench.filter(Boolean)].filter(u=>u.card_type==='unit');
     let plan=null,planRound=0;
     function selectPlan(){
@@ -357,6 +361,16 @@
         else if(plan.transition.includes(u.id))value+=Math.max(1,10-progress*2-(s.round>9?4:0))*transitionWeight;
       }
       if(shopping&&!u.golden){const copies=owned().filter(x=>!x.golden&&x.id===u.id).length;value+=copies===1?5:copies>=2?28:0;if(canCompleteTriple(u))value+=20}
+      const ability=currentCommander?.skill?.description||'', id=currentCommander?.id;
+      const factions=['炎','拉特兰','阿戈尔','维多利亚','谢拉格','卡西米尔'];
+      if(factions.some(f=>ability.includes(f)&&(u.faction===f||u.faction==='任意')))value+=8*synergy;
+      for(const [word,field] of [['后勤','logistics'],['先手','initiative'],['遗计','legacy'],['血战','bloodbattle'],['护盾','shield'],['突袭','raid']]){
+        if(ability.includes(word)&&(u[field]||hasMark(u,field)))value+=4*synergy;
+      }
+      if(['typhon','lemuen','exusiai','confessor'].includes(id)&&/bullet_strength|team_bullet/.test(text))value+=8;
+      if(['dusk','mudrock','exusiai_alter','ermengard','clementia','skadi_alter'].includes(id)&&/summon|legacy/.test(text))value+=6;
+      if(id==='eunectes'&&(u.bloodbattle||u.before_attack||u.cleave))value+=7*synergy;
+      if(id==='dusk'&&team.length>=6&&!team.some(x=>x.id===u.id)&&shopping)value-=5;
       return value+strategicValue(u);
     }
     const bestIndex=(items,fn=score)=>items.reduce((best,u,i)=>u&&(best<0||fn(u)>fn(items[best]))?i:best,-1);
@@ -368,6 +382,30 @@
       return cloneData(options[bestIndex(options,u=>u.emergency_target_index!==undefined?-score(u):score(u,true))]||null);
     };
     chooseBlessingStat=async u=>Number(u.attack)>Number(u.max_hp)?'attack':'hp';
+    async function prepareCommanderCombat(){
+      let c=currentCommander;if(!c)return;
+      if(['exusiai','russell','skadi_alter'].includes(c.id)){
+        let state=await api('/api/arena/commander-upgrade',{});
+        while(state.pending){
+          const team=compact(s.board),choice=c.id==='exusiai'?((c.overload_upgrades||[]).includes('barrage')?'charge':'barrage'):c.id==='russell'?(team.reduce((n,u)=>n+u.attack-u.max_hp,0)>0?'health':'attack'):(state.options.includes('summon_growth')?(team.some(u=>u.legacy||u.initiative?.type?.includes('summon'))?'summon_growth':'logistics'):state.options.includes('venom')?'venom':'revive');
+          state=await api('/api/arena/commander-upgrade',{choice});c=currentCommander=state.commander;
+        }
+        syncSeabornAura();
+      }
+      if(['typhon','exusiai','confessor','closure','exusiai_alter','amiya'].includes(c.id)){
+        for(let i=0;i<2&&c.skill_used_round!==s.round;i++){
+          const payload={};
+          if(c.id==='confessor')payload.choice='middle';
+          if(c.id==='amiya')payload.choice=(2+2*Math.floor(Number(s.totalGoldSpent||0)/10))>=Math.min(compact(s.board).length,s.shopLevel)*s.shopLevel?'empathy':'mercy';
+          if(c.id==='exusiai_alter'){
+            const unit=compact(s.board).sort((a,b)=>Number(!!b.legacy)-Number(!!a.legacy)||score(b)-score(a))[0];
+            if(!unit)break;
+            unit.delivery_target_key||='delivery-'+Date.now()+'-'+Math.random();payload.target=unit.delivery_target_key;
+          }
+          c=currentCommander=(await api('/api/arena/commander-skill',payload)).commander;
+        }
+      }
+    }
     async function choices(){
       if(s.deployTarget){const p=s.deployTarget,mark=({select_buff_shield:'shield',select_buff_combo:'combo',select_buff_lock_hp:'lock_hp',select_buff_revive:'revive'})[p._effect.type];
         await chooseDeployTarget(bestIndex(p._options,u=>skillTargetScore(u)+(s.board.includes(u)?12:0)-(mark&&hasMark(u,mark)?8:0)));return true}
@@ -423,11 +461,11 @@
       s.shopLocked=!!(worthwhile&&canCompleteTriple(candidate));done=true;return false;
     }
     window.arenaAgent={
-      configure(options){if(!validPolicy(options.weights))throw Error('训练参数不合法');policy=options.weights.slice();trainingGuides=cloneData(options.guides);plan=null;planRound=0},
+      configure(options){if(!validPolicy(options.weights))throw Error('训练参数不合法');policy=options.weights.slice();commanderPolicies={};trainingGuides=cloneData(options.guides);plan=null;planRound=0},
       guides:readGuides,
-      async init(seat){const shared=await api('/api/training');policy=validPolicy(shared.policy?.weights)?shared.policy.weights:null;number=seat.number||8;s.started=true;s.cards=await api('/api/cards');await syncGuides();syncPlayer(await api('/api/player'));s.shop=await api('/api/shop');await preparation()},
+      async init(seat){const shared=await api('/api/training');policy=validPolicy(shared.policy?.weights)?shared.policy.weights:null;commanderPolicies=Object.fromEntries(Object.entries(shared.policy?.commander_weights||{}).filter(([,v])=>validPolicy(v)));number=seat.number||8;s.started=true;s.cards=await api('/api/cards');await syncGuides();syncPlayer(await api('/api/player'));s.shop=await api('/api/shop');await preparation()},
       step,
-      async submit(){while(await choices()){};if(currentCommander?.id==='cannot'&&currentCommander.skill_used_round!==s.round&&s.gold>=Math.max(0,10-Number(currentCommander.merchant_discount||0))&&s.shop.some(u=>u?.card_type==='unit')&&s.bench.filter(Boolean).length+s.shop.filter(u=>u?.card_type==='unit').length<=12)await useCannotSkill();if(currentCommander?.id==='jessica'&&s.shopLevel>=2&&emptyBench()>=0&&(currentCommander.rally_options?.length||(currentCommander.skill_used_round!==s.round&&s.gold>=2&&s.shop.some(u=>u?.card_type==='unit')))){try{await useJessicaSkill(s.shop.find(u=>u?.card_type==='unit'))}catch(e){log(e.message,'bad')}};if(currentCommander?.id==='tinman')for(let n=0;n<2&&currentCommander.skill_used_round!==s.round&&s.gold>=1&&emptyBench()>=0&&s.shop.some(u=>u?.card_type==='unit');n++)await useTinmanSkill();if(currentCommander?.id==='yu'&&(currentCommander.isomorph_options?.length||(currentCommander.skill_used_round!==s.round&&s.gold>=1)))await useYuSkill();if(currentCommander?.id==='kaltsit'&&currentCommander.skill_used_round!==s.round){const targets=compact(s.board);targets.sort((a,b)=>score(b)-score(a));if(targets.length)await useKaltsitSkill(targets[0])}if(currentCommander?.id==='qalaisa'&&currentCommander.skill_used_round!==s.round){const targets=compact(s.board);targets.sort((a,b)=>score(b)-score(a));if(targets.length)await useQalaisaSkill(targets[0])}if(currentCommander?.id==='quintus'&&currentCommander.skill_used_round!==s.round){const targets=compact(s.board).filter(u=>unitRarity(u)<6);targets.sort((a,b)=>score(a)-score(b));if(targets.length)await useQuintusSkill(targets[0])}if(currentCommander?.id==='warfarin'&&currentCommander.skill_used_round!==s.round){const targets=compact(s.board);targets.sort((a,b)=>Number(!!b.logistics)-Number(!!a.logistics)||(b.attack+b.max_hp)-(a.attack+a.max_hp));if(targets.length)await useWarfarinSkill(targets[0])}if(currentCommander?.id==='shu'&&currentCommander.skill_used_round!==s.round){const targets=[...compact(s.board),...compact(s.shop)];targets.sort((a,b)=>shuTargets(b.faction).length-shuTargets(a.faction).length);if(targets.length)await useShuSkill(targets[0])}if(plan){const team=compact(s.board);team.sort((a,b)=>{const pos=u=>hasMark(u,'block')?-2:plan.core.includes(u.id)?plan.core.indexOf(u.id):hasMark(u,'guard')?-1:8;return pos(a)-pos(b)});s.board=pad(team)}await workshopRequest;deliverCommanderRewards();await api('/api/arena/submit',stateForBattle())},
+      async submit(){while(await choices()){};await prepareCommanderCombat();if(currentCommander?.id==='malkiewicz'&&currentCommander.skill_used_round!==s.round&&s.gold>=1&&emptyBench()>=0){const targets=compact(s.shop).filter(u=>u.card_type==='unit').sort((a,b)=>score(b,true)-score(a,true));if(targets.length)await usePackagingSkill(targets[0])};if(currentCommander?.id==='dusk'&&currentCommander.skill_used_round!==s.round){const targets=compact(s.board);targets.sort((a,b)=>score(b)-score(a));if(targets.length&&targets.length<7)await useDuskSkill(targets[0])};if(currentCommander?.id==='cannot'&&currentCommander.skill_used_round!==s.round&&s.gold>=Math.max(0,10-Number(currentCommander.merchant_discount||0))&&s.shop.some(u=>u?.card_type==='unit')&&s.bench.filter(Boolean).length+s.shop.filter(u=>u?.card_type==='unit').length<=12)await useCannotSkill();if(currentCommander?.id==='jessica'&&s.shopLevel>=2&&emptyBench()>=0&&(currentCommander.rally_options?.length||(currentCommander.skill_used_round!==s.round&&s.gold>=2&&s.shop.some(u=>u?.card_type==='unit')))){try{await useJessicaSkill(s.shop.find(u=>u?.card_type==='unit'))}catch(e){log(e.message,'bad')}};if(currentCommander?.id==='tinman')for(let n=0;n<2&&currentCommander.skill_used_round!==s.round&&s.gold>=1&&emptyBench()>=0&&s.shop.some(u=>u?.card_type==='unit');n++)await useTinmanSkill();if(currentCommander?.id==='yu'&&(currentCommander.isomorph_options?.length||(currentCommander.skill_used_round!==s.round&&s.gold>=1)))await useYuSkill();if(currentCommander?.id==='kaltsit'&&currentCommander.skill_used_round!==s.round){const targets=compact(s.board);targets.sort((a,b)=>score(b)-score(a));if(targets.length)await useKaltsitSkill(targets[0])}if(currentCommander?.id==='qalaisa'&&currentCommander.skill_used_round!==s.round){const targets=compact(s.board);targets.sort((a,b)=>score(b)-score(a));if(targets.length)await useQalaisaSkill(targets[0])}if(currentCommander?.id==='quintus'&&currentCommander.skill_used_round!==s.round){const targets=compact(s.board).filter(u=>unitRarity(u)<6);targets.sort((a,b)=>score(a)-score(b));if(targets.length)await useQuintusSkill(targets[0])}if(currentCommander?.id==='warfarin'&&currentCommander.skill_used_round!==s.round){const targets=compact(s.board);targets.sort((a,b)=>Number(!!b.logistics)-Number(!!a.logistics)||(b.attack+b.max_hp)-(a.attack+a.max_hp));if(targets.length)await useWarfarinSkill(targets[0])}if(currentCommander?.id==='shu'&&currentCommander.skill_used_round!==s.round){const targets=[...compact(s.board),...compact(s.shop)];targets.sort((a,b)=>shuTargets(b.faction).length-shuTargets(a.faction).length);if(targets.length)await useShuSkill(targets[0])}if(currentCommander?.id==='eunectes'){const team=compact(s.board);team.sort((a,b)=>(score(b)+(b.bloodbattle?10:0))-(score(a)+(a.bloodbattle?10:0)));s.board=pad(team)}else if(plan){const team=compact(s.board);team.sort((a,b)=>{const pos=u=>hasMark(u,'block')?-2:plan.core.includes(u.id)?plan.core.indexOf(u.id):hasMark(u,'guard')?-1:8;return pos(a)-pos(b)});s.board=pad(team)}await workshopRequest;deliverCommanderRewards();await api('/api/arena/submit',stateForBattle())},
       async result(res,finished){if(!res)return;await applyResult(res,compact(s.board).map(cloneData),false);done=finished||s.hp<=0;steps=0;skippedSkills.clear();rejectedShop.clear()},
       async prepare(){if(s.hp<=0)return;await newShop();await preparation();await syncGuides();selectPlan();done=false},
       inspect(){return {round:s.round,gold:s.gold,hp:s.hp,level:s.shopLevel,board:cloneData(s.board),bench:cloneData(s.bench),steps,done}}
@@ -505,7 +543,7 @@
   for(const host of [document.querySelector('.start-actions'),document.querySelector('.terminal-nav'),document.querySelector('.battle-tools')])if(host){const button=document.createElement('button');button.className='btn lineup-open';button.textContent='推荐阵容';button.onclick=()=>openLineupGuide().catch(e=>alert(e.message));host.append(button)}
   window.openLineupGuide=openLineupGuide;
   let commanderCatalog=[],commanderFilter='all';
-  function commanderDescription(c){if(c.id==='russell'){const upgrades=c.command_upgrades||[];return '光环：所有友方棋子获得【血战：永久获得+'+(1+upgrades.filter(x=>x==='attack').length)+'/+'+(1+upgrades.filter(x=>x==='health').length)+'】（商店2/3/4/5级挑选强化技能）'}const name=c.skill?.name||'',text=c.skill?.description||'技能待配置';return name&&text.startsWith(name)?text.slice(name.length).replace(/^[：:\s]+/,''):text}
+  function commanderDescription(c){if(c.id==='amiya')return c.skill.description+'\n【哀恸共情】先手：使最左侧的棋子获得+2/+2（每累计消耗10金币，技能提升+2/+2，如果胜利保留属性，下回合重新选择效果）\n【慈悲愿景】先手：随机使1个友方棋子获得+1/+1（数量和属性均随商店等级提升，如果胜利保留属性，下回合重新选择效果）';if(c.id==='russell'){const upgrades=c.command_upgrades||[];return '光环：所有友方棋子获得【血战：永久获得+'+(1+upgrades.filter(x=>x==='attack').length)+'/+'+(1+upgrades.filter(x=>x==='health').length)+'】（商店2/3/4/5级挑选强化技能）'}const name=c.skill?.name||'',text=c.skill?.description||'技能待配置';return name&&text.startsWith(name)?text.slice(name.length).replace(/^[：:\s]+/,''):text}
   const commanderInfo=c=>c?`<div class="commander-profile">${c.artwork?`<img src="${esc(c.artwork)}" alt="${esc(c.name)}全身照">`:''}<h3>${esc(c.name)}</h3>${c.skill?.icon?`<img src="${esc(c.skill.icon)}" alt="技能图标" style="width:64px;height:64px">`:''}<p>【${esc(c.skill?.name||'')}】</p><p>${esc(commanderDescription(c))}${c.id==='exusiai'?'<br>升级二选一（可重复叠加）：冲锋模式——基础伤害翻倍；扫射模式——额外发射2发铳弹。<br>当前：'+(1+2*(c.overload_upgrades||[]).filter(x=>x==='barrage').length)+'发，每发'+(3*2**(c.overload_upgrades||[]).filter(x=>x==='charge').length)+'基础伤害':''}</p><small>${c.skill?.active?(c.id==='fiammetta'?'0金币 · 获得苦难后可再次选择':`${Number(c.skill.cost||0)} 金币 · 每回合${Number(c.skill.limit||1)}次`):'被动技能'}</small></div>`:'';
   const commanderStyle=document.createElement('style');commanderStyle.textContent=`
     .commander-library .codex-body{max-width:1800px;display:grid;grid-template-columns:160px minmax(0,1fr);column-gap:32px}.commander-library #codexTabs{grid-column:1;grid-row:1/3;display:flex;flex-direction:column;align-self:start;position:sticky;top:110px;border-left:1px solid #719a81;border-bottom:0;padding:20px 0;gap:20px}.commander-library #codexTabs .btn{text-align:left;padding:18px 24px;background:transparent}.commander-library #codexTabs .active{border-left:3px solid #c5e735;background:linear-gradient(90deg,#426c5055,transparent);color:#eff5d9}.commander-library #codexFilters{grid-column:2;align-items:center}.commander-library #codexGrid{grid-column:2}.commander-library #closeCodex{margin-right:180px}@media(max-width:650px){.commander-library .codex-body{display:block}.commander-library #codexTabs{position:static;flex-direction:row;padding:0;gap:8px}.commander-library #codexTabs .btn{padding:10px}.commander-library #closeCodex{margin-right:0}}
@@ -535,14 +573,24 @@
     $('#codexTabs').insertAdjacentHTML('beforeend',`<button class="btn ${codexType==='commander'?'active':''}" data-codex-type="commander">棋手</button>`);
     $('#codexGrid').classList.toggle('commander-archive',codexType==='commander');$('#codexScene').classList.toggle('commander-library',codexType==='commander');
     if(codexType==='commander'){
-      $('#codexFilters').innerHTML=`<span class="archive-count">棋手档案 / ${commanderCatalog.length}</span><select aria-label="筛选棋手技能" id="commanderFilter"><option value="all">全部棋手</option><option value="active">主动技能</option><option value="passive">被动技能</option></select>`;
+      $('#codexFilters').innerHTML=`<span class="archive-count">棋手档案 / ${commanderCatalog.length}</span><button class="btn" id="refreshCommanderCatalog">刷新列表</button><select aria-label="筛选棋手技能" id="commanderFilter"><option value="all">全部棋手</option><option value="active">主动技能</option><option value="passive">被动技能</option></select>`;
+      $('#refreshCommanderCatalog').onclick=refreshCommanderCatalog;
       $('#commanderFilter').value=commanderFilter;$('#commanderFilter').onchange=e=>{commanderFilter=e.target.value;renderCodex()};
       const shown=commanderCatalog.filter(c=>commanderFilter==='all'||Boolean(c.skill?.active)===(commanderFilter==='active'));
       $('#codexGrid').innerHTML=shown.length?shown.map(c=>`<button class="commander-archive-card" data-commander="${esc(c.id)}" aria-label="查看${esc(c.name)}的技能"><span class="archive-frame"></span><img class="archive-art" src="${esc(c.artwork||c.portrait)}" alt="${esc(c.name)}" loading="lazy"><span class="archive-name">${esc(c.name)}</span><span class="archive-type">${c.skill?.active?'主动':'被动'} · 【${esc(c.skill?.name||'')}】</span><span class="archive-diamond"></span></button>`).join(''):'<div class="commander-empty">暂无棋手</div>';
+      if(commanderCatalogError)$('#codexGrid').insertAdjacentHTML('afterbegin','<p role="alert">'+esc(commanderCatalogError)+'</p>');
       $('#codexGrid').querySelectorAll('[data-commander]').forEach(b=>b.onclick=()=>openCommanderArchive(shown.find(c=>c.id===b.dataset.commander)));
     }
   };
-  api('/api/commanders').then(data=>{commanderCatalog=data.commanders||[];if(codexType==='commander')renderCodex()}).catch(()=>{});
+  let commanderCatalogError='';
+  async function refreshCommanderCatalog(){
+    try{const data=await api('/api/commanders');commanderCatalog=data.commanders||[];commanderCatalogError=''}
+    catch(error){commanderCatalogError='棋手列表加载失败：'+error.message}
+    if(codexType==='commander')renderCodex();
+  }
+  const originalOpenCodexScene=openCodexScene;
+  openCodexScene=async function(){commanderFilter='all';await refreshCommanderCatalog();return originalOpenCodexScene()};
+  refreshCommanderCatalog();
   async function chooseCommander(){
     const panel=document.createElement('section');panel.className='commander-screen hidden';document.body.append(panel);
     let state=await api('/api/arena/commander',{action:'state'}),selected=-1,busy=false;
@@ -597,6 +645,15 @@
     for(const i of result.indices)s.shop[i]=null;
     for(const card of result.cards)s.bench[handAppendSlot()]=cloneData(card);
     tryCombineTriples();log('秘境商人：花费'+result.spent+'金币，获得'+result.cards.length+'个棋子，技能费用重置为10。','good');draw();
+  }
+  async function usePackagingSkill(target){
+    const index=s.shop.indexOf(target);if(index<0)throw Error('只能选择商店棋子');
+    const slot=emptyBench();if(slot<0)throw Error('备战区已满');
+    const result=await api('/api/arena/commander-skill',{target:{zone:'shop',unit:cloneData(target),hand_count:s.bench.filter(Boolean).length}});
+    syncPlayer(result.player);currentCommander=result.commander;
+    if(!botId)arena.lobby.seats.find(p=>p.number===0).commander=result.commander;
+    s.shop[index]=null;s.bench[slot]=cloneData(result.card);
+    log('商业包装：获得'+result.card.name+'，下回合解锁。','good');draw();
   }
   async function useTinmanSkill(){
     const slot=emptyBench();if(slot<0)throw Error('备战区已满');
@@ -700,7 +757,14 @@
     applyClientBuff(target,result.amount,result.amount,0,'commander');
     log('食腐之蝶：'+target.name+'获得 +'+result.amount+'/+'+result.amount+'。','good');
   }
-  async function chooseShuTarget(boardOnly=false,quintus=false,qalaisa=false,kaltsit=false,jessica=false,humus=false){
+  async function useDuskSkill(target){
+    if(!s.board.includes(target))throw Error('只能选择我方棋盘棋子');
+    const result=await api('/api/arena/commander-skill',{target:{zone:'board',id:target.id}});
+    currentCommander=result.commander;
+    if(!botId)arena.lobby.seats.find(p=>p.number===0).commander=result.commander;
+    target.dusk_copy_round=result.round;draw();
+  }
+  async function chooseShuTarget(boardOnly=false,quintus=false,qalaisa=false,kaltsit=false,jessica=false,humus=false,dusk=false,packaging=false){
     if(s.deployTarget||s.deployTargetResolving)return;
     if(!compact(s.board).length&&(boardOnly||!compact(s.shop).length)){log('没有可选棋子，请先部署棋子。','bad');return}
     const wasBusy=s.busy;s.busy=true;draw();
@@ -712,6 +776,8 @@
     if(kaltsit){notice.querySelector('strong').textContent='指令：熔毁 · 点击我方棋盘上的高亮棋子';notice.querySelector('p').textContent='本回合变为任意阵营，并永久获得属性增益。'}
     if(jessica){notice.querySelector('strong').textContent='集结指标 · 点击商店中的高亮棋子';notice.querySelector('p').textContent='消耗2金币，移除目标并挑选同阵营的其他棋子。'}
     if(humus){notice.querySelector('strong').textContent='回收利用 · 点击我方棋盘上的高亮棋子';notice.querySelector('p').textContent='将目标移除并获得3金币；不触发售出或遗计。'}
+    if(dusk){notice.querySelector('strong').textContent='幻画为真 · 点击我方棋盘上的高亮棋子';notice.querySelector('p').textContent='本回合战斗开始时，有空位则召唤完整复制。'}
+    if(packaging){notice.querySelector('strong').textContent='商业包装 · 点击商店中的高亮棋子';notice.querySelector('p').textContent='消耗1金币，获得+1/+1并移入手牌，下回合解锁。'}
     document.body.append(notice);
     const selector=jessica?'#shop .unit-card':boardOnly?'#board .unit-card':'#board .unit-card,#shop .unit-card';
     const elements=[...document.querySelectorAll(selector)].filter(el=>!quintus||unitRarity((el.closest('#shop')?s.shop:s.board)[Number(el.dataset.slot)-1])<6);
@@ -724,7 +790,7 @@
         const el=e.target.closest(selector);if(!el||!elements.includes(el))return;
         e.preventDefault();e.stopImmediatePropagation();if(saving)return;
         const target=(el.closest('#shop')?s.shop:s.board)[Number(el.dataset.slot)-1];if(!target)return;
-        saving=true;try{await (humus?useHumusSkill(target):jessica?useJessicaSkill(target):kaltsit?useKaltsitSkill(target):qalaisa?useQalaisaSkill(target):quintus?useQuintusSkill(target):boardOnly?useWarfarinSkill(target):useShuSkill(target));resolve()}catch(error){notice.querySelector('p').textContent=error.message;saving=false}
+        saving=true;try{await (packaging?usePackagingSkill(target):dusk?useDuskSkill(target):humus?useHumusSkill(target):jessica?useJessicaSkill(target):kaltsit?useKaltsitSkill(target):qalaisa?useQalaisaSkill(target):quintus?useQuintusSkill(target):boardOnly?useWarfarinSkill(target):useShuSkill(target));resolve()}catch(error){notice.querySelector('p').textContent=error.message;saving=false}
       };window.addEventListener('click',onClick,true);
     })}finally{
       window.removeEventListener('click',onClick,true);window.removeEventListener('keydown',onKey,true);
@@ -755,17 +821,18 @@
     const bar=document.getElementById('arenaSeats');if(!bar||!arena.lobby)return;
     bar.innerHTML=arena.lobby.seats.map(p=>`<button class="arena-seat ${p.number===0?'is-self':''} ${p.health<=0?'eliminated':''}" data-seat="${p.number}" title="${esc(p.name)} · ${p.health} 生命 · 查看上回合阵容" aria-label="${esc(p.name)}，生命${p.health}，查看上回合阵容"><span class="arena-ring" style="--health:${Math.max(0,Math.min(100,p.health*2))}%"><span>${esc(p.number===0?Array.from(p.name)[0]:String(p.number))}</span></span><small>${p.health<=0?'#'+p.rank:p.health}</small></button>`).join('');
     const next=arena.lobby.seats.find(p=>p.number===0)?.opponent_id;
-    for(const p of arena.lobby.seats)if(p.commander?.portrait){const face=bar.querySelector(`[data-seat="${p.number}"] .arena-ring>span`);face.innerHTML=`<img src="${esc(p.commander.portrait)}" alt="${esc(p.commander.name)}" style="${p.commander.id==='humus'?'transform:scale(7);transform-origin:49% 38%':p.commander.id==='skadi_alter'?'transform:scale(8);transform-origin:48% 42%':p.commander.id==='cannot'?'transform:scale(5);transform-origin:40% 1%':p.commander.id==='russell'?'transform:scale(6);transform-origin:49% 18%':p.commander.id==='justin'?'transform:scale(5);transform-origin:55% 1%':p.commander.id==='necrass'?'transform:scale(8);transform-origin:48% 42%':p.commander.id==='jessica'?'transform:scale(6);transform-origin:41% 46%':p.commander.id==='yu'?'transform:scale(7);transform-origin:54% 35%':p.commander.id==='tinman'?'transform:scale(7);transform-origin:48% 37%':p.commander.id==='goliath'?'transform:scale(5);transform-origin:51% 12%':p.commander.id==='damazti'?'transform:scale(5);transform-origin:51% 10%':p.commander.id==='muelsyse'?'transform:scale(8);transform-origin:66% 37%':p.commander.id==='shamare'?'transform:scale(7);transform-origin:53% 34%':p.commander.id==='kaltsit'?'transform:scale(8);transform-origin:55% 60%':p.commander.id==='qalaisa'?'transform:scale(6);transform-origin:49% 22%':p.commander.id==='ermengard'?'transform:scale(6);transform-origin:54% 17%':p.commander.id==='mlynar'?'transform:scale(7);transform-origin:49% 34%':p.commander.id==='clementia'?'transform:scale(7);transform-origin:51% 30%':p.commander.id==='dobermann'?'transform:scale(5);transform-origin:55% 8%':p.commander.id==='quintus'?'transform:scale(1.2);transform-origin:50% 25%':p.commander.id==='chen'?'transform:scale(7);transform-origin:47% 39%':p.commander.id==='harold'?'transform:scale(6);transform-origin:50% 18%':p.commander.id==='lee'?'transform:scale(6);transform-origin:65% 23%':p.commander.id==='emperor'?'transform:scale(3);transform-origin:50% 13%':p.commander.id==='orchid'?'transform:scale(5);transform-origin:44% 6%':p.commander.id==='confessor'?'transform:scale(7);transform-origin:48% 40%':p.commander.id==='silverash_reignfrost'?'transform:scale(8);transform-origin:48% 33%':p.commander.id==='typhon'?'transform:scale(4);transform-origin:52% 24%':p.commander.id==='lemuen'?'transform:scale(5);transform-origin:50% 42%':p.commander.id==='exusiai'?'transform:scale(5);transform-origin:50% 12.5%':p.commander.id==='fiammetta'?'transform:scale(6);transform-origin:53% 36%':p.commander.id==='fiammetta'?'transform:scale(6);transform-origin:49% 34%':p.commander.id==='warfarin'?'transform:scale(5);transform-origin:53% 23%':p.commander.id==='shu'?'transform:scale(6);transform-origin:52% 41%':p.commander.id==='du_yaoye'?'transform:scale(5);transform-origin:51% 12%':p.commander.id==='closure'?'transform:scale(6);transform-origin:53% 43%':p.commander.id==='paganini'?'transform:scale(3);transform-origin:60% 4%':''}">`}
+    for(const p of arena.lobby.seats)if(p.commander?.portrait){const face=bar.querySelector(`[data-seat="${p.number}"] .arena-ring>span`);face.innerHTML=`<img src="${esc(p.commander.portrait)}" alt="${esc(p.commander.name)}" style="${p.commander.id==='malkiewicz'?'transform:scale(5);transform-origin:51% 14%':p.commander.id==='humus'?'transform:scale(7);transform-origin:49% 38%':p.commander.id==='skadi_alter'?'transform:scale(8);transform-origin:48% 42%':p.commander.id==='cannot'?'transform:scale(5);transform-origin:40% 1%':p.commander.id==='russell'?'transform:scale(6);transform-origin:49% 18%':p.commander.id==='justin'?'transform:scale(5);transform-origin:55% 1%':p.commander.id==='necrass'?'transform:scale(8);transform-origin:48% 42%':p.commander.id==='jessica'?'transform:scale(6);transform-origin:41% 46%':p.commander.id==='yu'?'transform:scale(7);transform-origin:54% 35%':p.commander.id==='tinman'?'transform:scale(7);transform-origin:48% 37%':p.commander.id==='goliath'?'transform:scale(5);transform-origin:51% 12%':p.commander.id==='damazti'?'transform:scale(5);transform-origin:51% 10%':p.commander.id==='muelsyse'?'transform:scale(8);transform-origin:66% 37%':p.commander.id==='shamare'?'transform:scale(7);transform-origin:53% 34%':p.commander.id==='kaltsit'?'transform:scale(8);transform-origin:55% 60%':p.commander.id==='qalaisa'?'transform:scale(6);transform-origin:49% 22%':p.commander.id==='ermengard'?'transform:scale(6);transform-origin:54% 17%':p.commander.id==='mlynar'?'transform:scale(7);transform-origin:49% 34%':p.commander.id==='clementia'?'transform:scale(7);transform-origin:51% 30%':p.commander.id==='dobermann'?'transform:scale(5);transform-origin:55% 8%':p.commander.id==='quintus'?'transform:scale(1.2);transform-origin:50% 25%':p.commander.id==='chen'?'transform:scale(7);transform-origin:47% 39%':p.commander.id==='harold'?'transform:scale(6);transform-origin:50% 18%':p.commander.id==='lee'?'transform:scale(6);transform-origin:65% 23%':p.commander.id==='emperor'?'transform:scale(3);transform-origin:50% 13%':p.commander.id==='orchid'?'transform:scale(5);transform-origin:44% 6%':p.commander.id==='confessor'?'transform:scale(7);transform-origin:48% 40%':p.commander.id==='silverash_reignfrost'?'transform:scale(8);transform-origin:48% 33%':p.commander.id==='typhon'?'transform:scale(4);transform-origin:52% 24%':p.commander.id==='lemuen'?'transform:scale(5);transform-origin:50% 42%':p.commander.id==='exusiai'?'transform:scale(5);transform-origin:50% 12.5%':p.commander.id==='fiammetta'?'transform:scale(6);transform-origin:53% 36%':p.commander.id==='fiammetta'?'transform:scale(6);transform-origin:49% 34%':p.commander.id==='warfarin'?'transform:scale(5);transform-origin:53% 23%':p.commander.id==='shu'?'transform:scale(6);transform-origin:52% 41%':p.commander.id==='du_yaoye'?'transform:scale(5);transform-origin:51% 12%':p.commander.id==='closure'?'transform:scale(6);transform-origin:53% 43%':p.commander.id==='paganini'?'transform:scale(3);transform-origin:60% 4%':''}">`}
     const commander=arena.lobby.seats.find(p=>p.number===0)?.commander;
     if(commander&&!document.getElementById('commanderHud')){
       const hud=document.createElement('div');hud.id='commanderHud';
       hud.innerHTML=`${commander.artwork?`<img src="${esc(commander.artwork)}" alt="${esc(commander.name)}">`:''}<button class="btn" disabled title="${esc(commander.skill?.description||'技能待配置')}">${esc(commander.skill?.name||'被动技能')}</button><small class="commander-cost">${commander.skill?.active?`(<svg viewBox="0 0 20 20" aria-label="金币"><circle cx="10" cy="10" r="8" fill="#eacb67"/><path d="M10 5v10M7 7h6M7 13h6" stroke="#80601c"/></svg> ${Number(commander.skill.cost||0)})`:'被动'}</small>`;
+      hud.insertAdjacentHTML('beforeend',`<span class="commander-hud-name">${esc(commander.name)}</span><strong class="commander-hud-health" aria-label="生命"></strong>`);
       document.querySelector('.battle-tools').append(hud);
       const button=hud.querySelector('button');
       if(commander.skill?.icon)button.insertAdjacentHTML('afterbegin',`<img src="${esc(commander.skill.icon)}" alt="" style="width:48px;height:48px;display:block;margin:auto">`);
       button.onclick=async()=>{
         if(button.disabled)return;button.disabled=true;
-        try{if(commander.id==='humus'){await chooseShuTarget(true,false,false,false,false,true);return}if(commander.id==='cannot'){await useCannotSkill();return}if(commander.id==='jessica'){if(commander.rally_options?.length)await useJessicaSkill();else await chooseShuTarget(false,false,false,false,true);return}if(commander.id==='tinman'){await useTinmanSkill();return}if(commander.id==='yu'){await useYuSkill();return}if(commander.id==='kaltsit'){await chooseShuTarget(true,false,false,true);return}if(commander.id==='qalaisa'){await chooseShuTarget(false,false,true);return}if(commander.id==='quintus'){await chooseShuTarget(false,true);return}if(commander.id==='confessor'){await chooseExaminerMode();return}if(commander.id==='warfarin'){await chooseShuTarget(true);return}if(commander.id==='shu'){await chooseShuTarget();return}if(commander.id==='fiammetta'){await chooseCommanderBlessing();return}if(commander.id==='exusiai_alter'){await chooseDeliveryTarget();return}const result=await api('/api/arena/commander-skill',{});Object.assign(arena.lobby.seats.find(p=>p.number===0).commander,result.commander);log(result.commander.id==='closure'?'极限调度已生效，经济资助将在下回合回营时发放。':result.commander.skill.name+'已准备，将在本回合先手阶段触发。','good')}
+        try{if(commander.id==='amiya'){await chooseExaminerMode(true);return}if(commander.id==='malkiewicz'){await chooseShuTarget(false,false,false,false,true,false,false,true);return}if(commander.id==='dusk'){await chooseShuTarget(true,false,false,false,false,false,true);return}if(commander.id==='humus'){await chooseShuTarget(true,false,false,false,false,true);return}if(commander.id==='cannot'){await useCannotSkill();return}if(commander.id==='jessica'){if(commander.rally_options?.length)await useJessicaSkill();else await chooseShuTarget(false,false,false,false,true);return}if(commander.id==='tinman'){await useTinmanSkill();return}if(commander.id==='yu'){await useYuSkill();return}if(commander.id==='kaltsit'){await chooseShuTarget(true,false,false,true);return}if(commander.id==='qalaisa'){await chooseShuTarget(false,false,true);return}if(commander.id==='quintus'){await chooseShuTarget(false,true);return}if(commander.id==='confessor'){await chooseExaminerMode();return}if(commander.id==='warfarin'){await chooseShuTarget(true);return}if(commander.id==='shu'){await chooseShuTarget();return}if(commander.id==='fiammetta'){await chooseCommanderBlessing();return}if(commander.id==='exusiai_alter'){await chooseDeliveryTarget();return}const result=await api('/api/arena/commander-skill',{});Object.assign(arena.lobby.seats.find(p=>p.number===0).commander,result.commander);log(result.commander.id==='closure'?'极限调度已生效，经济资助将在下回合回营时发放。':result.commander.skill.name+'已准备，将在本回合先手阶段触发。','good')}
         catch(e){log(e.message,'bad')}finally{updateCommanderButton()}
       };
     }
@@ -774,18 +841,23 @@
   }
   function updateCommanderButton(){
     const button=document.querySelector('#commanderHud button'),c=arena.lobby?.seats.find(p=>p.number===0)?.commander;if(!button||!c)return;
+    const health=document.querySelector('#commanderHud .commander-hud-health');if(health)health.textContent=arena.lobby.seats.find(p=>p.number===0)?.health??'';
+    button.dataset.state=!c.skill?.active?'被动':c.skill_used_round===s.round?'已使用':c.blessing_pending?'等待回营':'使用';
     button.disabled=!c.skill?.active||s.phase!=='备战'||s.busy||c.skill_used_round===s.round||!!c.blessing_pending;
+    if(c.id==='malkiewicz'){button.disabled=button.disabled||s.gold<1||emptyBench()<0||!s.shop.some(u=>u?.card_type==='unit');return}
     if(c.id==='cannot'){const cost=Math.max(0,10-Number(c.merchant_discount||0)),count=s.shop.filter(u=>u?.card_type==='unit').length;button.disabled=button.disabled||s.gold<cost||!count||s.bench.filter(Boolean).length+count>12;button.title=c.skill.description+'\n当前费用：'+cost+'金币；使用后重置为10金币';const label=document.querySelector('#commanderHud .commander-cost');if(label)label.innerHTML='(<span aria-label="金币">🪙</span> '+cost+')';return}
     if(c.id==='russell'){button.title=commanderDescription(c);return}
     if(c.id==='tinman'){button.disabled=button.disabled||s.gold<1||emptyBench()<0||!s.shop.some(u=>u?.card_type==='unit');button.innerHTML=`<img src="${esc(c.skill.icon)}" style="width:48px;height:48px;display:block;margin:auto">${esc(c.skill.name)}`;button.title=c.skill.description+(c.tinman_upgraded?'':'\n升级进度 '+Number(c.tinman_uses||0)+'/9');return}
     if(c.id==='necrass'){button.innerHTML=`<img src="${esc(c.skill.icon)}" style="width:48px;height:48px;display:block;margin:auto">${esc(c.skill.name)}`;button.title=c.skill.description+'\n当前光环：+'+s.shopLevel+'攻击力'+(c.necrass_awakened?'':'；距离激活还需 '+Math.max(0,10-(Number(s.round)-1)-Number(c.necrass_acceleration||0))+' 回合');return}
     if(c.id==='goliath'){button.innerHTML=`<img src="${esc(c.skill.icon)}" style="width:48px;height:48px;display:block;margin:auto">${esc(c.skill.name)}`;button.title=c.skill.description+(c.chen_activated?'':'\n当前回合增益：+'+(Number(s.round)*4)+'/+'+(Number(s.round)*4));return}
+    if(c.id==='amiya'){const option=amiyaOptions().find(o=>o.mode===c.unity_mode);button.title=c.skill_used_round===s.round&&option?option.description:amiyaOptions().map(o=>o.name+'：'+o.description).join('\n');if(c.skill_used_round===s.round&&option)button.innerHTML='<img src="assets/commanders/'+option.icon+'" alt="'+option.name+'">';else button.innerHTML='<img src="'+c.skill.icon+'" alt="众志合一">';return}
     if(c.id==='confessor'){
       const spent=Number(s.totalGoldSpent||0),selected=c.skill_used_round===s.round;
       const option=examinerOptions(spent).find(o=>o.mode===c.examiner_mode);
       button.innerHTML=`<img src="assets/commanders/${selected?option.icon:'confessor-s1.png'}" style="width:48px;height:48px;display:block;margin:auto;${selected&&option.mirror?'transform:scaleX(-1)':''}">${selected?option.name:c.skill.name}<br>${3+2*Math.floor(spent/8)}点伤害`;
       button.title=c.skill.description+'\n累计消耗 '+spent+' 金币；下次提升进度 '+(spent%8)+'/8'+(selected?'\n'+option.description:'\n本回合可选择左侧、中间或右侧');return;
     }
+    if(c.id==='eunectes'){const amount=Number(s.round||1)+Number(c.victories||0);button.title=c.skill.description+'\n当前增益：+'+amount+'/+'+amount+'；累计胜利 '+Number(c.victories||0)+' 次';return}
     if(c.id==='dobermann'){button.title=c.skill.description+'\n当前光环：+'+(Number(s.round||1)+Number(c.victories||0))+'攻击力；累计胜利 '+Number(c.victories||0)+' 次';return}
     if(c.id==='jessica'){button.disabled=s.phase!=='备战'||s.busy||s.shopLevel<2||emptyBench()<0||(!c.rally_options?.length&&(c.skill_used_round===s.round||s.gold<2||!s.shop.some(u=>u?.card_type==='unit')));button.title=c.skill.description+(s.shopLevel<2?'\n商店2级解锁':'');return}
     if(c.id==='yu'){button.disabled=s.phase!=='备战'||s.busy||(!c.isomorph_options?.length&&(c.skill_used_round===s.round||s.gold<1));button.title=c.skill.description+'\n累计使用 '+Number(c.isomorph_uses||0)+' 次；进度 '+Number(c.isomorph_uses||0)%4+'/4';return}
