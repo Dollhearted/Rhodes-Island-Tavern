@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict');
+const ai=require('./ai-playbook.js');
+const unit=(id,a=3,h=4,extra={})=>({id,card_type:'unit',attack:a,max_hp:h,...extra});
+const eater=unit('Philae',3,5,{logistics:{type:'assimilate_random_shop',multiplier:1}});
+const grower=unit('Tomimi',4,4,{logistics:{type:'shop_stat_growth',amount:1}});
+assert(ai.sargonValue(eater,[grower],[unit('food',20,20)])>ai.sargonValue(eater,[],[]));
+assert(ai.sargonValue(grower,[eater],[])>ai.sargonValue(grower,[],[]));
+assert(ai.sargonValue(eater,[],[unit('food',20,20)])>ai.sargonValue(eater,[{...eater},{...eater}],[unit('food',20,20)]));
+const ordinary=unit('x',30,30),combo=unit('x',30,30,{combo:true});
+assert(ai.trainingReward([combo],[],4).score>ai.trainingReward([ordinary],[],4).score);
+assert.equal(ai.trainingReward([unit('weak')],[],8).novelty,0);
+assert(ai.trainingReward([unit('strong',200,200)],[],3).novelty>0);
+console.log('PASS: Sargon supply/demand, output and gated exploration');

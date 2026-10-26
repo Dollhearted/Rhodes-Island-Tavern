@@ -4,26 +4,20 @@
 <style>body{background:#101e18;color:#def5e9;font:16px system-ui;max-width:1000px;margin:40px auto;padding:20px}button,input{font:inherit;padding:10px;margin:5px;background:#244536;color:inherit;border:1px solid #70ad8d}input{width:80px}pre{white-space:pre-wrap;background:#08110d;padding:20px;max-height:60vh;overflow:auto}a{color:#8debc0}</style>
 <h1>八人 AI 自对弈训练</h1>
 <p>八个独立玩家共享卡池，复用游戏经营、技能和战斗规则。每代保留上一代优胜参数，再生成七组变体进行比较；多局轮换座位，直到决出最后一名胜者。请保持本页打开。</p>
-<p>评分：推荐阵容匹配 45% + 阵容攻血总和 35% + 最终名次 20%。匹配按重复数量计算；数值使用对数，避免单次极端成长压倒其他目标。使用服务器共享的推荐阵容。</p>
+<p>评分：推荐阵容匹配20% + 攻血总和30% + 输出机制估值15% + 最终名次35%。有战力基础的新组合额外奖励最多3分；每局2名AI降低对推荐阵容的依赖进行探索。萨尔贡参与随机阵营抽选，AI学习商店养成与兼并联动。数值采用对数计分，兼容已有训练参数。</p>
 <label>训练代数<input id="generations" type="number" min="1" max="1000" value="10"></label>
 <label>每代局数<input id="games" type="number" min="1" max="100" value="3"></label>
 <button id="run">开始 / 继续训练</button><button id="stop" disabled>本回合后停止</button>
 <button id="apply" disabled>应用优胜参数到游戏</button><button id="export" disabled>导出训练记录</button>
 <p>结果自动保存在服务器；点击应用后，所有浏览器中新开始的游戏 AI 使用该参数。训练不会覆盖推荐阵容或当前玩家存档。参数搜索不保证每代实际胜率提升，建议多局训练后验证。</p>
 <a href="/">返回游戏</a><pre id="out" role="status">等待开始。</pre>
-<script src="network.js"></script><script>
+<script src="ai-playbook.js"></script><script src="network.js"></script><script>
 'use strict';
 const $=id=>document.getElementById(id),key='autochess-training-v1';
 let stopped=false,running=false,checkpoint=null,frames=[],revision=0;
 
 function show(text){$('out').textContent=text}
-function reward(board,guides,rank){
-  const units=board.filter(Boolean),counts=new Map();for(const u of units)counts.set(u.id,(counts.get(u.id)||0)+1);
-  const match=Math.max(0,...guides.filter(g=>g.core.length).map(g=>{const remaining=new Map(counts);let n=0;for(const id of g.core){if(remaining.get(id)>0){n++;remaining.set(id,remaining.get(id)-1)}}return n/Math.max(7,g.core.length)}));
-  const total=units.reduce((n,u)=>n+Math.max(0,Number(u.attack)||0)+Math.max(0,Number(u.max_hp)||0),0);
-  const stats=Math.log1p(total)/(Math.log1p(total)+Math.log(301));
-  return {score:45*match+35*stats+20*(8-rank)/7,match,total,rank};
-}
+function reward(board,guides,rank){return AIPlaybook.trainingReward(board,guides,rank)}
 function mutate(weights){return weights.map(v=>Math.max(.25,Math.min(3,v*Math.exp((Math.random()-.5)*.6))))}
 const owner='training-'+(sessionStorage.aiTrainingOwner||(sessionStorage.aiTrainingOwner=crypto.randomUUID()));
 function retryNotice(attempt,delay){show(`连接暂时中断，${(delay/1000).toFixed(1)} 秒后自动重试（第 ${attempt} 次）；当前训练进度保留。`)}
@@ -53,7 +47,7 @@ async function match(population,game,generation,games,guides){
   cleanup();let {lobby}=await api('/api/arena/start',{nickname:'训练 AI 0',training:true,difficulty:'peril'});
   const seats=[...lobby.seats].sort((a,b)=>a.number-b.number),agents=await Promise.all(seats.map(loadAgentWithRetry));
   if(!guides)guides=agents[0].a.guides();
-  for(let i=0;i<8;i++){agents[i].candidate=(i+game)%8;agents[i].commander=seats[i].commander?.id;const base=checkpoint?.commander_weights?.[agents[i].commander];agents[i].weights=base?(agents[i].candidate===0?base:mutate(base)):population[agents[i].candidate];agents[i].a.configure({weights:agents[i].weights,guides})}
+  for(let i=0;i<8;i++){agents[i].candidate=(i+game)%8;agents[i].commander=seats[i].commander?.id;const base=checkpoint?.commander_weights?.[agents[i].commander];agents[i].weights=base?(agents[i].candidate===0?base:mutate(base)):population[agents[i].candidate];agents[i].a.configure({weights:agents[i].weights,guides,explore:agents[i].candidate%4===3})}
   for(let round=1;round<=100;round++){
     const alive=agents.filter(x=>lobby.seats.find(p=>p.id===x.id).health>0);
     // Rotate buying order as well as seat assignment to reduce shared-pool priority bias.
@@ -85,7 +79,7 @@ $('run').onclick=async()=>{
       const commander_weights={...(checkpoint?.commander_weights||{})};
       const grouped={};for(const m of records.flat())if(m.commander)(grouped[m.commander]??=[]).push(m);
       for(const [id,results] of Object.entries(grouped))commander_weights[id]=results.sort((a,b)=>b.score-a.score)[0].weights;
-      checkpoint={commander_weights,version:1,generation:entry.generation,weights:best,guides,history:[...(checkpoint?.history||[]),entry].slice(-100)};
+      checkpoint={commander_weights,scoring_version:2,version:1,generation:entry.generation,weights:best,guides,history:[...(checkpoint?.history||[]),entry].slice(-100)};
       localStorage.setItem('autochess-training-unsynced',JSON.stringify({revision,checkpoint}));
       const saved=await trainingApi({mode:'save',revision,checkpoint});revision=saved.revision;checkpoint=saved.checkpoint;
       localStorage.removeItem('autochess-training-unsynced');

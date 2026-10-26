@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const html=fs.readFileSync('index.html','utf8');
-const originalCreateContext=vm.createContext;vm.createContext=function(...args){const ctx=originalCreateContext(...args);if(ctx.s&&!ctx.handAppendSlot){const start=html.indexOf('function handAppendSlot(');vm.runInContext(html.slice(start,html.indexOf('\n',start)),ctx)}return ctx};
+const originalCreateContext=vm.createContext;vm.createContext=function(...args){const ctx=originalCreateContext(...args);ctx.AIPlaybook=require("./ai-playbook.js");if(ctx.explore===undefined)ctx.explore=false;if(ctx.s&&!ctx.handAppendSlot){const start=html.indexOf('function handAppendSlot(');vm.runInContext(html.slice(start,html.indexOf('\n',start)),ctx)}return ctx};
 (async function testQuintusReset(){
  const code=fs.readFileSync('arena.js','utf8');
  for(const zone of ['board','shop']){
@@ -49,7 +49,7 @@ const originalCreateContext=vm.createContext;vm.createContext=function(...args){
 // The bot realm must boot alongside the real immutable frontend bindings.
 function testArenaAgentBoot(){
   const ctx=vm.createContext({URLSearchParams,location:{search:'?arena-agent=test-ai'},s:{},window:{},
-    start(){},fight(){},startPrep(){},loadEnemy(){},draw(){},updateHud(){},triggerPrepSummon(){},triggerClientBloodbattle(){},triggerPlayerSupports(){},syncPlayer(){},upgradeShop(){},queueTripleAnimation(){},
+    start(){},fight(){},startPrep(){},loadEnemy(){},draw(){},updateHud(){},triggerPrepSummon(){},triggerClientBloodbattle(){},triggerPlayerSupports(){},triggerRecruit(){},syncPlayer(){},upgradeShop(){},queueTripleAnimation(){},
     tryCombineTriples(){},captureTripleSources(){},animatePrepAssimilate(){},chooseThree(){},chooseBlessingStat(){}});
   vm.runInContext("const log=()=>{};",ctx);
   vm.runInContext(fs.readFileSync('arena.js','utf8'),ctx);
@@ -137,7 +137,7 @@ async function testLobbyHealthWaitsForPlayback(){
 function testTrainingReward(){
   const code=fs.readFileSync('train-ai.html','utf8'),ctx=vm.createContext({});
   vm.runInContext(code.slice(code.indexOf('function reward('),code.indexOf('const owner=')),ctx);
-  const u=(id,n)=>({id,attack:n,max_hp:n}),guides=[{core:['a','b','b','c','d','e','f']}];
+  const u=(id,n)=>({id,card_type:"unit",attack:n,max_hp:n}),guides=[{core:['a','b','b','c','d','e','f']}];
   const base=ctx.reward([u('a',10)],guides,4);
   assert(ctx.reward([u('a',20)],guides,4).score>base.score);
   assert(ctx.reward([u('a',10),u('b',10)],guides,4).match>base.match);
@@ -182,6 +182,7 @@ async function testSelling(){
   vm.runInContext(fs.readFileSync('board-drag.js','utf8').split('// Guided tutorial')[0],ctx);
   vm.runInContext(extract('async function sellCard(', 'window.allowUnitSkillDrop='),ctx);
   loadFunctions(ctx,['isCardLocked']);
+  ctx.emptyBench=()=>ctx.s.bench.length;ctx.goldenRewardCard=()=>({name:'紧急支援',card_type:'skill'});
   for(const where of ['bench','board'])for(const id of ['Hoederer','Ines','U-Official','ordinary'])for(const golden of [false,true]){
     const card={id,card_type:'unit',name:id,golden};let refunded=0,triggered=0;
     ctx.s.bench=[card];ctx.s.board=[card];
@@ -649,7 +650,7 @@ function testOffboardEventSlots(){
 
 (function testCommanderRewardExceedsBenchLimit(){
  const code=fs.readFileSync('arena.js','utf8'),state={board:[],bench:[{id:'occupied'}]};let draws=0;
- const ctx=vm.createContext({window:{},arena:{},tryCombineTriples(){},s:state,compact:a=>(a||[]).filter(Boolean),triggerPrepSummon(){},triggerClientBloodbattle(){},triggerPlayerSupports(){},syncPlayer(){},draw:()=>draws++,refreshCommanderBlessings(){},handAppendSlot:()=>state.bench.length,emptyBench:()=>-1,log(){}});
+ const ctx=vm.createContext({window:{},arena:{},tryCombineTriples(){},s:state,compact:a=>(a||[]).filter(Boolean),triggerPrepSummon(){},triggerClientBloodbattle(){},triggerPlayerSupports(){},triggerRecruit(){},syncPlayer(){},draw:()=>draws++,refreshCommanderBlessings(){},handAppendSlot:()=>state.bench.length,emptyBench:()=>-1,log(){}});
  vm.runInContext(code.slice(code.indexOf('  const pendingCommanderRewards='),code.indexOf('  async function preparation()')),ctx);
  vm.runInContext("pendingCommanderRewards.push({id:'reward',name:'金卡',golden:true})",ctx);
  ctx.draw();assert.equal(state.bench[0].id,'occupied');assert.equal(state.bench[1].id,'reward');
@@ -792,4 +793,125 @@ function testOffboardEventSlots(){
  vm.runInContext(code.slice(code.indexOf('  async function useHumusSkill('),code.indexOf('  async function useQuintusSkill(')),ctx);
  await assert.rejects(ctx.useHumusSkill({id:'shop'}));assert.equal(calls,0);
  await ctx.useHumusSkill(unit);assert.equal(s.board.length,1);assert.equal(s.board[0],ally);assert.equal(s.gold,6);assert.equal(calls,1);
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(async function testMulberryBoardAndShop(){
+ const code=fs.readFileSync('arena.js','utf8'),unit=()=>({id:'Courier',card_type:'unit',attack:1,max_hp:1,mechanics:[]});
+ const board=unit(),shop=unit(),bench=unit(),unshielded=unit();board.shield=true;bench.shield=true;
+ const ctx=vm.createContext({s:{board:[board,unshielded],shop:[shop],bench:[bench]},botId:'test',currentCommander:null,compact:a=>a.filter(Boolean),hasMark:(u,m)=>u[m]||u.mechanics.includes(m),syncPlayer(){},draw(){},applyClientBuff(u,a,h){u.attack+=a;u.max_hp+=h},api:async(path,data)=>{assert.equal(data.target.zone,'shop');return {player:{},commander:{id:'mulberry'}}}});
+ vm.runInContext(code.slice(code.indexOf('  async function useMulberrySkill'),code.indexOf('  async function useDuskSkill')),ctx);
+ await ctx.useMulberrySkill(shop);assert.equal(board.attack,2);assert.equal(shop.attack,2);assert.equal(bench.attack,1);assert.equal(unshielded.attack,1);assert.equal(shop.mechanics.filter(m=>m==='shield').length,1);
+ await assert.rejects(ctx.useMulberrySkill(bench));
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(function testManticoreDeploy(){
+ for(const multiplier of [1,2])for(const times of [1,2,3,5]){
+  const unit={name:'狮蝎',attack:2,max_hp:1},state={shop:[{name:'A',card_type:'unit',attack:3,max_hp:4},null,{name:'B',card_type:'unit',attack:5,max_hp:6}]};
+  const ctx=vm.createContext({s:state,Math:Object.assign(Object.create(Math),{random:()=>0}),log(){},applyClientBuff(u,a,h){u.attack+=a;u.max_hp+=h}});
+  loadFunctions(ctx,['assimilateRandomShop']);ctx.assimilateRandomShop(unit,{multiplier},times);
+  assert.equal(unit.attack,2+(times===1?3:8)*multiplier);assert.equal(unit.max_hp,1+(times===1?4:10)*multiplier);
+  assert.equal(state.shop.filter(Boolean).length,times===1?1:0);
+ }
+})();
+
+(async function testMechanismAnalysis(){
+ const card={card_type:'skill',effect:'mechanism_analysis'},state={shop:[{card_type:'unit',attack:1,max_hp:2}],bench:[card,card],board:[]};
+ let supports=0;
+ const ctx=vm.createContext({s:state,draw(){},triggerPlayerSupports(){supports++},applyClientBuff(u,a,h){u.attack+=a;u.max_hp+=h}});
+ loadFunctions(ctx,['useBenchSkill','liveDescription']);
+ await ctx.useBenchSkill(0,true);assert.equal(state.shop[0].attack,3);assert.equal(state.analysisGrowth,1);
+ assert(ctx.liveDescription(card).includes('+3/+3'));
+ state.shop=[{card_type:'unit',attack:1,max_hp:2}];
+ await ctx.useBenchSkill(1,true);assert.equal(state.shop[0].attack,4);assert.equal(state.analysisGrowth,2);assert.equal(supports,2);
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(function testPapyrusAndFullCodex(){
+ const ally={faction:'萨尔贡'},wild={faction:'任意'},other={faction:'炎'},shop={faction:'萨尔贡'};
+ const ctx=vm.createContext({s:{cards:[],board:[ally,wild,other],shop:[shop]},prepTargetPool:include=>include?[ally,wild,other,shop]:[ally,wild,other],codexType:'skill'});
+ loadFunctions(ctx,['deployTargetOptions']);
+ assert.deepEqual(Array.from(ctx.deployTargetOptions(ally,{type:'select_assimilate_shop',faction:'萨尔贡'})),[ally,wild]);
+ vm.runInContext("let codexCatalogue=[{id:'enemy_sorrow_1',card_type:'skill'}]",ctx);
+ loadFunctions(ctx,['codexEntries']);assert.equal(ctx.codexEntries()[0].id,'enemy_sorrow_1');assert.equal(ctx.s.cards.length,0);
+})();
+
+(function testShopHealthGrowth(){
+ const state={shop:[{card_type:'unit',max_hp:3,current_hp:3}]};
+ const ctx=vm.createContext({s:state});loadFunctions(ctx,['syncShopHealthGrowth','growShopHealth']);
+ ctx.growShopHealth(2);assert.equal(state.shop[0].max_hp,5);
+ ctx.syncShopHealthGrowth();assert.equal(state.shop[0].max_hp,5);
+ state.shop.push({card_type:'unit',max_hp:1});ctx.syncShopHealthGrowth();assert.equal(state.shop[1].max_hp,3);
+ ctx.growShopHealth(1);assert.equal(state.shop[0].max_hp,6);assert.equal(state.shop[1].max_hp,4);
+})();
+
+(async function testBeeswaxDecision(){
+ for(const count of [1,2])for(const selected of ['beeswax_assimilate','beeswax_obelisk']){
+  const source={faction:'萨尔贡',decision:{count,multiplier:count}},ally={faction:'萨尔贡'},wild={faction:'任意'},other={faction:'炎'},hits=[];
+  const state={board:[source,ally,wild,other],bench:[],cards:[{id:'guardian_obelisk'}]};
+  const ctx=vm.createContext({s:state,compact:a=>a.filter(Boolean),chooseThree:async()=>({id:selected}),assimilateRandomShop:(u,e,t)=>hits.push([u,e.multiplier,t]),emptyBench:()=>state.bench.length,cloneData:structuredClone,draw(){}});
+  loadFunctions(ctx,['resolveBeeswaxDecision']);await ctx.resolveBeeswaxDecision(source);
+  if(selected==='beeswax_assimilate'){assert.equal(hits.length,2);assert.equal(hits[0][0],ally);assert.equal(hits[1][0],wild);assert.equal(hits[0][1],count);assert.equal(hits[0][2],1)}else assert.equal(state.bench.length,count);
+  assert.equal(state.deployTargetResolving,false);
+ }
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(function testEunectesSynergy(){
+ const source={name:'森蚺',synergy:{type:'assimilate_random_shop',faction:'萨尔贡',multiplier:2}},deployed={faction:'萨尔贡'},calls=[];
+ const ctx=vm.createContext({s:{board:[source,deployed]},compact:a=>a.filter(Boolean),synergyMatches:(e,u)=>u.faction===e.faction||u.faction==='任意',assimilateRandomShop:(...a)=>calls.push(a),log(){}});
+ loadFunctions(ctx,['triggerSynergies']);ctx.triggerSynergies(deployed);
+ assert.equal(calls.length,1);assert.equal(calls[0][0],source);assert.equal(calls[0][1].multiplier,2);assert.equal(calls[0][2],1);
+ ctx.triggerSynergies(source);assert.equal(calls.length,1);
+ ctx.triggerSynergies({faction:'炎'});assert.equal(calls.length,1);
+})();
+
+(function testNarantuyaSupport(){
+ const source={support:{type:'assimilate_random_shop',threshold:1,multiplier:2}},calls=[];
+ const ctx=vm.createContext({s:{board:[source]},compact:a=>a.filter(Boolean),assimilateRandomShop:(...a)=>calls.push(a)});
+ loadFunctions(ctx,['triggerPlayerSupports']);ctx.triggerPlayerSupports();ctx.triggerPlayerSupports();
+ assert.equal(calls.length,2);assert.equal(calls[0][1].multiplier,2);assert.equal(calls[0][2],1);
+})();
+
+(async function testPermanentShopMealAcrossRefresh(){
+ const unit=()=>({card_type:'unit',attack:1,max_hp:2,current_hp:2});
+ const state={shop:[unit()],bench:[{card_type:'skill',effect:'guardian_obelisk',effect_value:2},{card_type:'skill',effect:'mechanism_analysis'}]};
+ const ctx=vm.createContext({s:state,draw(){},triggerPlayerSupports(){},applyClientBuff(u,a,h){u.attack+=a;u.max_hp+=h;u.current_hp+=h}});
+ loadFunctions(ctx,['useBenchSkill','syncShopHealthGrowth','growShopHealth','growShopStats']);
+ await ctx.useBenchSkill(0,true);assert.equal(state.shop[0].attack,3);assert.equal(state.shop[0].max_hp,4);
+ await ctx.useBenchSkill(1,true);assert.equal(state.shop[0].attack,5);
+ ctx.syncShopHealthGrowth();assert.equal(state.shop[0].attack,5);
+ state.shop=[unit()];ctx.syncShopHealthGrowth();assert.equal(state.shop[0].attack,3);assert.equal(state.shop[0].max_hp,4);
+ state.shop.push(unit());ctx.syncShopHealthGrowth();assert.equal(state.shop[0].attack,3);assert.equal(state.shop[1].attack,3);
+ state.bench=[{card_type:'skill',effect:'guardian_obelisk',effect_value:2}];await ctx.useBenchSkill(0,true);
+ state.shop=[unit()];ctx.syncShopHealthGrowth();assert.equal(state.shop[0].attack,5);assert.equal(state.shop[0].max_hp,6);
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(async function testGoldenSaleReward(){
+ for(const zone of ['bench','board'])for(const golden of [false,true]){
+  const u={id:'test',name:'测试',card_type:'unit',golden};const state={bench:zone==='bench'?[u]:[],board:zone==='board'?[u]:[]};let sales=0;
+  const ctx=vm.createContext({s:state,window:{},compact:a=>a.filter(Boolean),pad:a=>a,isCardLocked:()=>false,api:async()=>({refund:1}),syncPlayer(){},emptyBench:()=>{const i=state.bench.indexOf(null);return i<0?state.bench.length:i},goldenRewardCard:()=>({name:'紧急支援',card_type:'skill'}),triggerSale:async()=>{sales++},log(){}});
+  loadFunctions(ctx,['sellCard']);await ctx.sellCard(zone,0);
+  assert.equal(state.bench.filter(x=>x?.name==='紧急支援').length,golden?1:0);assert.equal(sales,1);assert(!state.board.includes(u));
+ }
+})().catch(e=>{console.error(e);process.exitCode=1});
+
+(function testPassengerShopAura(){
+ const code=fs.readFileSync('arena.js','utf8'),u={card_type:'unit',attack:3,max_hp:4,current_hp:4};
+ const state={shop:[u],board:[],bench:[]},commander={id:'passenger',fragments_used:0};
+ const ctx=vm.createContext({s:state,currentCommander:commander});
+ vm.runInContext(code.slice(code.indexOf('  function syncPassengerAura('),code.indexOf('  async function usePassengerSkill(')),ctx);
+ ctx.syncPassengerAura();ctx.syncPassengerAura();assert.equal(u.attack,4);assert.equal(u.max_hp,5);
+ commander.fragments_used=2;ctx.syncPassengerAura();assert.equal(u.attack,6);assert.equal(u.max_hp,7);
+ state.shop=[];state.bench=[u];ctx.syncPassengerAura();assert.equal(u.attack,3);assert.equal(u.max_hp,4);assert.equal(u._passenger_aura,undefined);
+ state.shop=[{card_type:'unit',attack:1,max_hp:2}];ctx.syncPassengerAura();assert.equal(state.shop[0].attack,4);
+})();
+
+(async function testLampDreamPurchase(){
+ const target={id:'old',card_type:'unit',stars:1,attack:8,max_hp:9};
+ const next={id:'new',name:'new',card_type:'unit',stars:2,attack:2,max_hp:2};
+ const state={shop:[target],bench:[{effect:'upgrade_shop_unit_transform',effect_value:2}],cards:[next],gold:3};
+ const ctx=vm.createContext({s:state,UNIT_CARD_COST:3,emptyBench:()=>0,cloneData:structuredClone,log(){},draw(){},triggerPlayerSupports(){},syncPlayer(){},recordGoldSpent(){},triggerRecruit(){},tryCombineTriples(){},api:async(path,data)=>{
+   assert.equal(path,'/api/buy');assert.equal(data.card_id,'new');assert.equal(data.bypass_shop_level,true);return {spent:3,card:{pool_tokens:['purchase-token']}};
+ }});
+ for(const name of ['useShopTransformSkill','buyShopIndex'])vm.runInContext(html.split(/\r?\n/).find(l=>l.startsWith('async function '+name+'(')),ctx);
+ await ctx.useShopTransformSkill(0,0);assert.equal(state.shop[0].attack,10);assert.equal(state.shop[0].max_hp,11);
+ await ctx.buyShopIndex(0);assert.equal(state.shop[0],null);assert.equal(state.bench[0].attack,10);assert.equal(state.bench[0].pool_tokens[0],'purchase-token');
 })().catch(e=>{console.error(e);process.exitCode=1});

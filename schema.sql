@@ -1292,3 +1292,76 @@ ON CONFLICT(id) DO UPDATE SET
 INSERT INTO unit_cards(id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
 VALUES ('Skadi Seaborn','斯卡蒂的海嗣','召唤物','阿戈尔',1,2,2,1,'#153c72','','{"summon_only":true,"mechanics":[],"golden_overrides":{}}')
 ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,description=excluded.description,extras_json=excluded.extras_json;
+
+-- 萨尔贡
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Pepe','佩佩','萨尔贡干员','萨尔贡',5,6,6,1,'#e99236','后勤：使所有友方萨尔贡棋子随机兼并1个商店棋子并获得其属性','{"mechanics": ["logistics", "assimilate"], "logistics": {"type": "team_assimilate_shop", "faction": "萨尔贡", "multiplier": 1}, "golden_description": "后勤：使所有友方萨尔贡棋子随机兼并1个商店棋子并获得其两倍属性", "golden_overrides": {"logistics": {"type": "team_assimilate_shop", "faction": "萨尔贡", "multiplier": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Narantuya','娜仁图亚','萨尔贡干员','萨尔贡',6,6,4,1,'#e99236','隐匿；支援：自身随机兼并1个商店棋子','{"mechanics": ["stealth", "support", "assimilate"], "stealth": true, "support": {"type": "assimilate_random_shop", "threshold": 1, "multiplier": 1}, "golden_description": "隐匿；支援：自身随机兼并1个商店棋子并获得其两倍属性", "golden_overrides": {"support": {"type": "assimilate_random_shop", "threshold": 1, "multiplier": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Passenger','异客','萨尔贡干员','萨尔贡',6,4,6,1,'#e99236','遗计：对最左侧的敌人造成等同于攻击力的铳弹伤害','{"mechanics": ["legacy", "bullet_damage"], "legacy": {"type": "bullet_damage", "target": "leftmost", "attack_ratio": 1}, "golden_description": "遗计：对最左侧的敌人造成等同于2倍攻击力的铳弹伤害", "golden_overrides": {"legacy": {"type": "bullet_damage", "target": "leftmost", "attack_ratio": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Manticore','狮蝎','萨尔贡干员','萨尔贡',1,1,2,1,'#e99236','上场：随机兼并一个商店棋子','{"mechanics": ["on_deploy", "assimilate"], "on_deploy": {"type": "assimilate_random_shop", "multiplier": 1}, "golden_description": "上场：随机兼并1个商店棋子并获得其两倍属性", "golden_overrides": {"on_deploy": {"type": "assimilate_random_shop", "multiplier": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Papyrus','莎草','萨尔贡干员','萨尔贡',2,3,2,1,'#e99236','上场：选择1个友方萨尔贡棋子，使其随机兼并1个商店棋子','{"mechanics": ["on_deploy", "assimilate"], "on_deploy": {"type": "select_assimilate_shop", "faction": "萨尔贡", "multiplier": 1}, "golden_description": "上场：选择1个友方萨尔贡棋子，使其随机兼并1个商店棋子并获得其两倍属性", "golden_overrides": {"on_deploy": {"type": "select_assimilate_shop", "faction": "萨尔贡", "multiplier": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Bubble','泡泡','萨尔贡干员','萨尔贡',1,2,2,1,'#e99236','复活；嘲讽','{"mechanics": ["revive", "guard"], "revive": true, "guard": true, "golden_description": "复活；嘲讽", "golden_overrides": {}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Heavyrain','暴雨','萨尔贡干员','萨尔贡',3,4,3,1,'#e99236','嘲讽；上场&遗计：永久使本场游戏中的商店内棋子获得+1生命','{"mechanics": ["guard", "on_deploy", "legacy", "permanent"], "golden_description": "嘲讽；上场&遗计：永久使本场游戏中的商店内棋子获得+2生命", "golden_overrides": {"on_deploy": {"type": "shop_health_growth", "amount": 2}, "legacy": {"type": "shop_health_growth", "amount": 2}}, "on_deploy": {"type": "shop_health_growth", "amount": 1}, "legacy": {"type": "shop_health_growth", "amount": 1}, "guard": true}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Tomimi','特米米','萨尔贡干员','萨尔贡',4,4,4,1,'#e99236','招募&后勤&售出：永久使本场游戏中的商店内棋子获得+1/+1','{"mechanics": ["recruit", "logistics", "sell", "permanent"], "recruit": {"type": "shop_stat_growth", "amount": 1}, "logistics": {"type": "shop_stat_growth", "amount": 1}, "sell": {"type": "shop_stat_growth", "amount": 1}, "golden_description": "招募&后勤&售出：永久使本场游戏中的商店内棋子获得+2/+2", "golden_overrides": {"recruit": {"type": "shop_stat_growth", "amount": 2}, "logistics": {"type": "shop_stat_growth", "amount": 2}, "sell": {"type": "shop_stat_growth", "amount": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Scene','稀音','萨尔贡干员','萨尔贡',5,5,1,1,'#e99236','后勤：获得萨尔贡阵营的1个随机棋子','{"mechanics": ["logistics"], "logistics": {"type": "gain_random_faction_unit", "faction": "萨尔贡", "count": 1}, "golden_description": "后勤：获得萨尔贡阵营的2个随机棋子", "golden_overrides": {"logistics": {"type": "gain_random_faction_unit", "faction": "萨尔贡", "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Minimalist','至简','萨尔贡干员','萨尔贡',2,1,3,1,'#e99236','上场：获得1张【机理分析】','{"mechanics": ["on_deploy"], "on_deploy": {"type": "gain_card", "card_id": "mechanism_analysis", "count": 1}, "golden_description": "上场：获得2张【机理分析】", "golden_overrides": {"on_deploy": {"type": "gain_card", "card_id": "mechanism_analysis", "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Sesa','慑砂','萨尔贡干员','萨尔贡',3,1,3,1,'#e99236','售出&遗计：随机获得1张技能卡','{"mechanics": ["sell", "legacy"], "golden_description": "售出&遗计：随机获得2张技能卡", "golden_overrides": {"sell": {"type": "gain_random_skill", "count": 2}, "legacy": {"type": "gain_random_skill", "count": 2}}, "sell": {"type": "gain_random_skill", "count": 1}, "legacy": {"type": "gain_random_skill", "count": 1}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Philae','菲莱','萨尔贡干员','萨尔贡',3,5,3,1,'#e99236','后勤：自身随机兼并1个商店棋子','{"mechanics": ["logistics", "assimilate"], "logistics": {"type": "assimilate_random_shop", "multiplier": 1}, "golden_description": "后勤：自身随机兼并1个商店棋子并获得其两倍属性", "golden_overrides": {"logistics": {"type": "assimilate_random_shop", "multiplier": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Beeswax','蜜蜡','萨尔贡干员','萨尔贡',4,4,4,1,'#e99236','嘲讽；锁血；遗计：召唤1个具有嘲讽的沙之碑，使其获得蜜蜡的1倍攻击力','{"mechanics": ["guard", "lock_hp", "legacy"], "guard": true, "lock_hp": true, "legacy": {"type": "summon_obelisk", "ratio": 1}, "golden_description": "嘲讽；锁血；遗计：召唤1个具有嘲讽的沙之碑，使其获得蜜蜡的2倍攻击力", "golden_overrides": {"legacy": {"type": "summon_obelisk", "ratio": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Carnelian','卡涅利安','萨尔贡干员','萨尔贡',4,4,3,1,'#e99236','抉择：使所有其他友方萨尔贡棋子兼并1个商店棋子或获得1张【生命之餐】','{"mechanics": ["decision", "assimilate"], "decision": {"type": "beeswax", "multiplier": 1, "count": 1}, "golden_description": "抉择：使所有其他友方萨尔贡棋子兼并1个商店棋子并获得两倍属性或获得2张【生命之餐】", "golden_overrides": {"decision": {"type": "beeswax", "multiplier": 2, "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Eunectes','森蚺','萨尔贡干员','萨尔贡',5,6,3,1,'#e99236','嘲讽；上场&协同(萨尔贡)：森蚺将随机兼并1个商店棋子','{"mechanics": ["guard", "on_deploy", "synergy", "assimilate"], "guard": true, "on_deploy": {"type": "assimilate_random_shop", "multiplier": 1}, "synergy": {"type": "assimilate_random_shop", "faction": "萨尔贡", "multiplier": 1}, "golden_description": "嘲讽；上场&协同(萨尔贡)：森蚺将随机兼并1个商店棋子并获得其两倍属性", "golden_overrides": {"on_deploy": {"type": "assimilate_random_shop", "multiplier": 2}, "synergy": {"type": "assimilate_random_shop", "faction": "萨尔贡", "multiplier": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards (id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Gavial the Invincible','百炼嘉维尔','萨尔贡干员','萨尔贡',4,6,4,1,'#e99236','突袭(1)；触发自身的突袭时，攻击最近的敌方棋子','{"mechanics": ["raid"], "raid": {"hits": 1}, "raid_nearest": true, "golden_description": "突袭(2)；触发自身的突袭时，攻击最近的敌方棋子", "golden_overrides": {"raid": {"hits": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,attack_range=excluded.attack_range,color=excluded.color,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards(id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Desert Obelisk','沙之碑','召唤物','萨尔贡',1,5,5,1,'#e99236','嘲讽','{"summon_only":true,"cannot_gain":true,"mechanics":["guard"],"guard":true}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,description=excluded.description,extras_json=excluded.extras_json;
+
+INSERT INTO unit_cards(id,name,role,faction,tier,max_hp,attack,attack_range,color,description,extras_json)
+VALUES ('Ascalon','阿斯卡纶','中立干员','中立',4,4,3,1,'#cfd4dc','上场&先手：随机获得1张技能卡','{"mechanics": ["on_deploy", "initiative"], "on_deploy": {"type": "gain_random_skill", "count": 1}, "initiative": {"type": "gain_random_skill", "count": 1}, "golden_description": "上场&先手：随机获得2张技能卡", "golden_overrides": {"on_deploy": {"type": "gain_random_skill", "count": 2}, "initiative": {"type": "gain_random_skill", "count": 2}}}')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role,faction=excluded.faction,tier=excluded.tier,max_hp=excluded.max_hp,attack=excluded.attack,description=excluded.description,extras_json=excluded.extras_json;

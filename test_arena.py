@@ -11,6 +11,370 @@ import server
 
 
 class ArenaTests(unittest.TestCase):
+    def test_transformed_shop_purchase_uses_pool(self):
+        card=next(c for c in server.cards() if c.get('card_type')=='unit' and server.card_tier(c)==2 and not c.get('summon_only'))
+        with self.assertRaises(ValueError):server.buy_card(card['id'],'human')
+        result=server.buy_card(card['id'],'human',bypass_shop_level=True)
+        self.assertEqual(result['spent'],3)
+        token=result['card']['pool_tokens'][0]
+        with server.db() as con:
+            row=con.execute('SELECT card_id,returned FROM shop_purchases WHERE token=?',(token,)).fetchone()
+            self.assertEqual(row['card_id'],card['id']);self.assertEqual(row['returned'],0)
+
+    def test_pepe_special_refresh(self):
+        room=server.arena_room('human');room['banned_factions']=[]
+        room['seats'][0]['commander']={'id':'pepe'};server.arena_save(room)
+        self.assertFalse(any(c['id']=='pepe' for c in server.available_commanders(server.COMMANDERS,['萨尔贡'])))
+        for level in (2,4,6):
+            with server.db() as con:con.execute('UPDATE players SET shop_level=?,gold=99 WHERE id=?',(level,'human'))
+            result=server.refresh_shop('human')['shop']
+            self.assertTrue(all(u and u['faction']=='萨尔贡' and server.card_tier(u)<=level for u in result))
+            c=server.arena_room('human')['seats'][0]['commander']
+            self.assertEqual(c['special_refresh_used'],level//2)
+            server.refresh_shop('human')
+            self.assertEqual(server.arena_room('human')['seats'][0]['commander']['special_refresh_used'],level//2)
+        with patch.object(server,'cards',return_value=[self.card('Courier')]):
+            self.assertTrue(all(u['id']=='Courier' for u in server.shop(count=3,player_id='human',priority_faction='萨尔贡',priority_all=True)))
+
+    def test_passenger_charges(self):
+        room=server.arena_room('human');room['seats'][0]['commander']={'id':'passenger'}
+        for i in range(2):
+            result=server.use_commander_skill(room,'human')
+            self.assertEqual(result['commander']['fragments_used'],i+1)
+            with self.assertRaises(ValueError):server.use_commander_skill(room,'human')
+            room['round']+=1
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human')
+        with server.db() as con:con.execute('UPDATE players SET shop_level=2 WHERE id=?',('human',))
+        result=server.use_commander_skill(room,'human')
+        self.assertEqual(result['commander']['fragments_used'],3)
+        self.assertEqual(result['player']['gold'],3)
+
+    def test_beeswax_obelisk_and_gavial_raid(self):
+        for ratio in (1,2):
+            source=dict(self.card('Beeswax'),attack=12,current_hp=0)
+            team=[None]*7;events=[]
+            server.trigger_legacy_effect(source,0,'left',team,[],events,{'type':'summon_obelisk','ratio':ratio})
+            summoned=next(u for u in team if u)
+            self.assertEqual(summoned['attack'],5+12*ratio)
+            self.assertEqual(summoned['max_hp'],5)
+            self.assertTrue(summoned['guard']);self.assertTrue(summoned['cannot_gain'])
+        for phase,expected in [('raid','near'),(None,'guard')]:
+            a=dict(self.card('Gavial the Invincible'),current_hp=100,max_hp=100)
+            near=dict(self.card('Tomimi'),name='near',current_hp=100,max_hp=100,attack=0)
+            guard=dict(self.card('Bubble'),name='guard',current_hp=100,max_hp=100,attack=0,revive=False)
+            foes=[near,None,None,guard];events=[]
+            server.perform_single_attack(a,0,'left',[a],foes,events,source_effect=phase)
+            hits=[e for e in events if e.get('damage') is not None and e.get('from')==a['name']]
+            self.assertTrue(hits)
+            self.assertEqual(hits[0]['to'],expected)
+
+    def test_scene_and_pepe_logistics(self):
+        scene=self.card('Scene');scene['logistics']['count']=2;events=[]
+        server.apply_logistics_effects([scene],'left',events)
+        rewards=[e['card'] for e in events if e['type']=='gain_card']
+        self.assertEqual(len(rewards),2)
+        self.assertTrue(all(server.belongs_to_faction(c,'萨尔贡') and not c.get('summon_only') for c in rewards))
+        for factor in (1,2):
+            pepe=self.card('Pepe');pepe['logistics']['multiplier']=factor
+            ally=self.card('Bubble');other=dict(self.card('Bubble'),faction='炎')
+            stock=[dict(self.card('Bubble'),attack=2,max_hp=3) for _ in range(3)]
+            token=server._logistics_shops.set({'left':stock})
+            try:
+                server.apply_logistics_effects([pepe,ally,other],'left',[])
+                self.assertEqual(pepe['attack'],6+2*factor)
+                self.assertEqual(ally['max_hp'],2+3*factor)
+                self.assertEqual(other['attack'],2)
+                self.assertEqual(sum(v is not None for v in stock),1)
+            finally:server._logistics_shops.reset(token)
+
+    def test_passenger_attack_scaled_leftmost_legacy(self):
+        for ratio in (1,2):
+            source=dict(self.card('Passenger'),attack=11,bullet_strength=3,current_hp=0)
+            target=dict(self.card('Tomimi'),name='left',current_hp=100,max_hp=100)
+            guard=dict(self.card('Bubble'),name='guard',current_hp=100,max_hp=100)
+            events=[];server.trigger_legacy_effect(source,4,'left',[source],[target,guard],events,{'type':'bullet_damage','attack_ratio':ratio,'target':'leftmost'})
+            hits=[e for e in events if e.get('damage_type')=='bullet']
+            self.assertEqual(hits[0]['to'],'left');self.assertEqual(hits[0]['damage'],11*ratio+3)
+
+    def test_logistics_playback_boundary(self):
+        ally=self.card('Philae');foe=self.card('Bubble')
+        result=server.tavern_battle([ally],[foe],shop=[self.card('Tomimi')])
+        events=result['events'];boundary=next(i for i,e in enumerate(events) if e['type']=='logistics_end')
+        self.assertTrue(any(e['type']=='shop_assimilate' for e in events[:boundary]))
+        self.assertTrue(all(i>boundary for i,e in enumerate(events) if e.get('damage_type')=='collision'))
+
+    def test_ascalon_initiative_repeat(self):
+        for count in (1,2):
+            u=self.card('Ascalon');u['initiative']['count']=count;u['current_hp']=4
+            tin=dict(self.card('Tin Man'),initiative_multiplier=3,current_hp=10)
+            events=[];server.resolve_precombat_phase('initiative',[u,tin],[],'left',events)
+            self.assertEqual(sum(e['type']=='gain_card' for e in events),count*3)
+
+    def test_tomimi_shop_growth(self):
+        for amount in (1,2):
+            u=self.card('Tomimi');u['logistics']['amount']=amount
+            stock=[dict(self.card('Bubble'))];token=server._logistics_shops.set({'left':stock})
+            try:
+                events=[];server.apply_logistics_effects([u],'left',events)
+                self.assertEqual(stock[0]['attack'],2+amount)
+                self.assertEqual(stock[0]['max_hp'],2+amount)
+                self.assertEqual(events[0]['type'],'shop_stat_growth')
+            finally:server._logistics_shops.reset(token)
+        self.assertNotIn('on_deploy',self.card('Beeswax'))
+        self.assertTrue(any(c['id']=='guardian_obelisk' for c in server.cards()))
+
+    def test_sesa_and_heavyrain_legacy(self):
+        for ident,kind,count in [('Sesa','gain_card',2),('Heavyrain','shop_health_growth',1)]:
+            unit=self.card(ident);events=[]
+            effect=unit['golden_overrides']['legacy']
+            server.trigger_legacy_effect(unit,0,'left',[unit],[],events,effect)
+            matched=[e for e in events if e['type']==kind]
+            self.assertEqual(len(matched),count)
+            if ident=='Heavyrain':self.assertEqual(matched[0]['amount'],2)
+            else:self.assertTrue(all(e['card']['card_type']=='skill' for e in matched))
+
+    def test_philae_logistics_assimilation(self):
+        for factor in (1,2):
+            unit=self.card('Philae');unit['logistics']['multiplier']=factor
+            aura=dict(self.card('Warfarin'),logistics_multiplier=3)
+            stock=[dict(self.card('Bubble'),attack=4,max_hp=5),None,dict(self.card('Bubble'),attack=6,max_hp=7)]
+            token=server._logistics_shops.set({'left':stock})
+            try:
+                events=[];server.apply_logistics_effects([unit,aura],'left',events)
+                self.assertEqual(unit['attack'],3+10*factor)
+                self.assertEqual(unit['max_hp'],5+12*factor)
+                self.assertFalse(any(stock))
+                self.assertEqual(sum(e['type']=='shop_assimilate' for e in events),2)
+            finally:server._logistics_shops.reset(token)
+
+    def test_sargon_eligible_and_stale_preview_replaced(self):
+        def choose(pool,count):
+            self.assertIn('萨尔贡',pool)
+            return ['萨尔贡']+[f for f in pool if f!='萨尔贡'][:count-1]
+        with server.db() as con:
+            con.execute('CREATE TABLE IF NOT EXISTS arena_previews (owner TEXT PRIMARY KEY,data TEXT NOT NULL)')
+            con.execute('INSERT INTO arena_previews VALUES (?,?)',('stale',json.dumps({'active_factions':['中立'],'banned_factions':['萨尔贡']})))
+        with patch.object(server.random,'sample',side_effect=choose):
+            roster=server.arena_preview('stale')
+        self.assertIn('萨尔贡',roster['active_factions'])
+        self.assertEqual(len(roster['active_factions']),6)
+        self.assertEqual(len(roster['banned_factions']),2)
+        self.assertEqual(server.arena_preview('stale'),roster)
+
+    def test_faction_skill_availability(self):
+        token=server._match_factions.set(None)
+        try:
+            catalogue=server.cards()
+            self.assertEqual({c['required_faction'] for c in catalogue if c.get('required_faction')},{'萨尔贡','阿戈尔','炎','谢拉格','维多利亚','卡西米尔','拉特兰'})
+            for faction in ['萨尔贡','阿戈尔','炎','谢拉格','维多利亚','卡西米尔','拉特兰']:
+                server._match_factions.set({'中立',faction})
+                skills=[c for c in server.cards() if c.get('required_faction')]
+                self.assertTrue(skills)
+                self.assertTrue(all(c['required_faction']==faction for c in skills))
+        finally:server._match_factions.reset(token)
+
+    def test_sargon_catalogue_and_random_roster(self):
+        expected={'Pepe':(5,6,6),'Narantuya':(6,4,6),'Passenger':(6,6,4),'Manticore':(1,2,1),'Papyrus':(2,2,3),'Bubble':(1,2,2),'Heavyrain':(3,3,4),'Tomimi':(4,4,4),'Scene':(5,1,5),'Minimalist':(2,3,1),'Sesa':(3,3,1),'Philae':(3,3,5),'Beeswax':(4,4,4),'Carnelian':(4,3,4),'Eunectes':(5,3,6),'Gavial the Invincible':(4,4,6)}
+        units=[u for u in server.unit_cards_from_db() if u['faction']=='萨尔贡' and not u.get('summon_only')]
+        self.assertEqual({u['id']:(u['tier'],u['attack'],u['max_hp']) for u in units},expected)
+        for u in units:
+            self.assertEqual(u['color'],'#e99236')
+            if u['id'] not in ('Manticore','Bubble','Minimalist','Papyrus','Philae','Sesa','Heavyrain','Tomimi','Beeswax','Carnelian','Gavial the Invincible','Scene','Eunectes','Pepe','Narantuya','Passenger'):self.assertFalse(u.get('mechanics'))
+        for _ in range(30):
+            roster=server.draw_match_factions()
+            self.assertEqual(len(roster['banned_factions']),2)
+            self.assertIn('萨尔贡',roster['active_factions']+roster['banned_factions'])
+            self.assertEqual(len(roster['active_factions']),6)
+
+
+    def test_wang_unlock_and_limits(self):
+        room=server.arena_room('human');room['seats'][0]['commander']={'id':'wang'}
+        unit=dict(self.card('Courier'),attack=19)
+        t={'zone':'board','board':[unit],'index':0}
+        r=server.use_commander_skill(room,'human',choice='unlock',target=t)
+        self.assertFalse(r['commander'].get('wang_unlocked'))
+        unit['attack']=20
+        r=server.use_commander_skill(room,'human',choice='unlock',target=t)
+        self.assertTrue(r['commander']['wang_unlocked']);self.assertTrue(r['commander']['skill']['active'])
+        unit['attack']=1
+        server.use_commander_skill(room,'human',target=t)
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target=t)
+        room['round']+=1;unit['golden']=True
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target=t)
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target=dict(t,zone='shop'))
+
+
+    def test_touch_damage_rewards(self):
+        c={'id':'touch'}
+        server.touch_damage_reward(c,10,3);self.assertEqual(c['touch_damage'],10);self.assertFalse(c.get('touch_rewards'))
+        server.touch_damage_reward(c,15,4);self.assertEqual(c['touch_damage'],3)
+        self.assertEqual(len(c['touch_rewards']),2)
+        for card in c['touch_rewards']:
+            self.assertEqual(card['discover_star'],4);self.assertTrue(card['triple_reward_only'])
+        room=server.arena_room('human');room['seats'][0]['commander']=c
+        self.assertEqual(len(server.commander_round_reward(room,'human')['cards']),2)
+        self.assertFalse(server.commander_round_reward(room,'human')['cards'])
+        self.assertFalse(any(u.get('triple_reward_only') for u in server.cards()))
+
+
+    def test_zuo_le_cost_level_and_raid(self):
+        room=server.arena_room('human');room['seats'][0]['commander']={'id':'zuo_le'}
+        before=server.player('human')['gold']
+        r=server.use_commander_skill(room,'human');self.assertEqual(r['player']['gold'],before-1)
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human')
+        c={'id':'zuo_le','_shop_level':3};events=[];team=[None]*7
+        enemy=dict(self.card('U-Official'),attack=0,max_hp=9999,current_hp=9999)
+        server.commander_order_flame(c,'left',team,[enemy],events)
+        gained=next(e['card'] for e in events if e.get('type')=='gain_card')
+        self.assertEqual(server.card_tier(gained),3)
+        summoned=next(e['unit'] for e in events if e.get('type')=='summon')
+        self.assertEqual(summoned['raid']['hits'],1)
+        self.assertTrue(any(e.get('source_effect')=='raid' for e in events))
+        events=[];server.commander_order_flame(c,'left',[self.card('Courier') for _ in range(7)],[enemy],events)
+        self.assertTrue(any(e.get('type')=='gain_card' for e in events))
+        self.assertFalse(any(e.get('type')=='summon' for e in events))
+
+
+    def test_ines_cost_and_battle_reward(self):
+        room=server.arena_room('human');room['seats'][0]['commander']={'id':'ines'}
+        before=server.player('human')['gold']
+        r=server.use_commander_skill(room,'human');self.assertEqual(r['player']['gold'],before-1)
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human')
+        enemy=dict(self.card('Courier'),attack=999,max_hp=999,current_hp=999,golden=True,tier=6,stars=6)
+        team=[dict(self.card('U-Official'),current_hp=1) for _ in range(7)]
+        events=[];server.commander_shadow_return({'id':'ines'},'left',team,[enemy],events)
+        gains=[e for e in events if e.get('type')=='gain_card']
+        self.assertEqual(len(gains),1);self.assertFalse(gains[0]['card'].get('golden'))
+        self.assertEqual(gains[0]['card']['attack'],self.card('Courier')['attack'])
+        self.assertFalse(any(e.get('type')=='summon' for e in events))
+        team=[None]*7;events=[]
+        server.commander_shadow_return({'id':'ines'},'left',team,[enemy],events)
+        self.assertTrue(any(e.get('type')=='summon' for e in events))
+        events=[];server.commander_shadow_return({'id':'ines'},'left',team,[],events)
+        self.assertEqual(events[0]['amount'],1)
+
+
+    def test_nymph_upgrade_and_assimilation_scope(self):
+        room=server.arena_room('human');room['seats'][0]['commander']={'id':'nymph'}
+        board=[self.card('Courier'),self.card('U-Official')]
+        shop_target=dict(zone='shop',unit=self.card('Courier'),board=board,index=-1)
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target=dict(shop_target,zone='board',index=0))
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target=dict(shop_target,board=[]))
+        for n in range(5):
+            room['round']=n+1
+            result=server.use_commander_skill(room,'human',target=shop_target)
+            self.assertIn(result['recipient'],(0,1))
+            self.assertEqual(result['attack'],self.card('Courier')['attack'])
+            with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target=shop_target)
+        self.assertEqual(result['commander']['skill']['name'],'心防溃决')
+        room['round']+=1;gold=server.player('human')['gold']
+        result=server.use_commander_skill(room,'human',target=dict(shop_target,zone='board',index=0))
+        self.assertEqual(result['recipient'],1)
+        self.assertEqual(result['player']['gold'],gold+1)
+
+    def test_ducklord_upgrade_and_interval(self):
+        room=server.arena_room('human');room['seats'][0]['commander']={'id':'ducklord'}
+        stock=[dict(self.card('Courier'),stars=n,tier=n) for n in (1,3,3,6)]
+        stock[3]['golden']=True
+        with server.db() as con:con.execute("UPDATE players SET total_gold_spent=24 WHERE id='human'")
+        self.assertIsNone(server.ducklord_shop_reward(room,'human',stock)['index'])
+        with server.db() as con:con.execute("UPDATE players SET total_gold_spent=25 WHERE id='human'")
+        r=server.ducklord_shop_reward(room,'human',stock)
+        self.assertIn(r['index'],(1,2));self.assertTrue(r['card']['golden'])
+        self.assertEqual(r['card']['attack'],self.card('Courier')['attack']*2)
+        self.assertTrue(r['commander']['duck_upgraded'])
+        self.assertIsNone(server.ducklord_shop_reward(room,'human',stock)['index'])
+        room['round']+=1
+        self.assertIsNone(server.ducklord_shop_reward(room,'human',stock)['index'])
+        room['round']+=1
+        self.assertIn(server.ducklord_shop_reward(room,'human',stock)['index'],(1,2))
+        self.assertIsNone(server.ducklord_shop_reward(room,'human',stock)['index'])
+
+    def test_ducklord_empty_shop_does_not_repeat(self):
+        room=server.arena_room('human');room['seats'][0]['commander']={'id':'ducklord'}
+        with server.db() as con:con.execute("UPDATE players SET total_gold_spent=25 WHERE id='human'")
+        result=server.ducklord_shop_reward(room,'human',[])
+        self.assertTrue(result['commander']['duck_upgraded'])
+        self.assertIsNone(result['index'])
+        self.assertIsNone(server.ducklord_shop_reward(room,'human',[self.card('Courier')])['index'])
+
+    def test_pith_target_and_scaling(self):
+        room=server.arena_room('human');room['seats'][0]['commander']={'id':'pith'}
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target={'zone':'shop','id':'Courier'})
+        with server.db() as con:con.execute("UPDATE players SET shop_level=4 WHERE id='human'")
+        result=server.use_commander_skill(room,'human',target={'zone':'board','id':'Courier'})
+        self.assertEqual(result['amount'],8)
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target={'zone':'board','id':'Courier'})
+
+    def test_stealth_targets_and_first_attack(self):
+        hidden=dict(self.card('U-Official'),attack=5,max_hp=100,current_hp=100,stealth=True,guard=True,mechanics=['stealth','guard'],_pith_attack_bonus=4)
+        enemy=dict(self.card('U-Official'),attack=1,max_hp=100,current_hp=100,mechanics=[])
+        self.assertIsNone(server.choose_target([hidden]))
+        self.assertEqual(server.random_target([hidden],True)[0],0)
+        self.assertEqual(server.choose_target([hidden,enemy])[0],1)
+        events=[]
+        server.perform_attack_action(hidden,0,'left',[hidden],[enemy],events)
+        self.assertFalse(server.has_stealth(hidden))
+        self.assertEqual((hidden['attack'],hidden['max_hp']),(14,104))
+        self.assertEqual(hidden['current_hp'],104) # shield blocks counterattack
+        server.perform_attack_action(hidden,0,'left',[hidden],[enemy],events)
+        self.assertEqual(hidden['attack'],14)
+        self.assertEqual(sum(e.get('type')=='stealth_removed' for e in events),1)
+
+    def test_stealth_takes_projectiles_and_cleave(self):
+        source=dict(self.card('U-Official'),attack=3,max_hp=50,current_hp=50)
+        hidden=dict(self.card('U-Official'),attack=1,max_hp=50,current_hp=50,stealth=True)
+        events=[]
+        server.deal_bullet_damage(source,0,'left',[source],[hidden],0,hidden,3,events)
+        self.assertEqual(hidden['current_hp'],47)
+        server.deal_cleave_damage(source,0,'left',[source],[hidden],0,hidden,3,events,[])
+        self.assertEqual(hidden['current_hp'],44)
+        self.assertTrue(server.has_stealth(hidden))
+
+    def test_pith_round_expiry(self):
+        unit=dict(self.card('U-Official'),pith_round=1,pith_amount=6)
+        result=server.tavern_battle([unit],[],2)
+        self.assertFalse(result['left'][0].get('stealth'))
+        result=server.tavern_battle([unit],[],1)
+        self.assertTrue(result['left'][0].get('stealth'))
+        self.assertFalse(result['persistent_left'][0].get('stealth'))
+
+    def test_kirara_temporary_gold_highest_two(self):
+        units=[dict(self.card('Courier'),stars=lv,tier=lv,attack=10,max_hp=20,current_hp=20,legacy=None) for lv in (1,3,6,5)]
+        units[2]['golden']=True
+        result=server.tavern_battle(units,[],1,commanders={'left':{'id':'kirara','challenge_points':15}})
+        changes=[e for e in result['events'] if e['type']=='temporary_golden']
+        self.assertEqual({e['slot'] for e in changes},{2,4})
+        for e in changes:self.assertEqual((e['unit']['attack'],e['unit']['max_hp']),(19,25))
+        for u in result['persistent_left']:
+            if u:self.assertEqual((u['attack'],u['max_hp']),(10,20))
+        self.assertFalse(result['persistent_left'][1].get('golden'))
+        before=server.tavern_battle(units,[],1,commanders={'left':{'id':'kirara','challenge_points':14}})
+        self.assertFalse(any(e['type']=='temporary_golden' for e in before['events']))
+
+    def test_whislash_refresh_two_distinct_units(self):
+        room=server.arena_room('human');room['seats'][0]['commander']={'id':'whislash'};server.arena_save(room)
+        for free in (False,True):
+            shop=server.refresh_shop('human',free=free)['shop']
+            enhanced=[u for u in shop if u['attack']==self.card(u['id'])['attack']+2]
+            self.assertEqual(len(enhanced),2)
+            for u in enhanced:
+                self.assertTrue(u['shield']);self.assertEqual(u['max_hp'],self.card(u['id'])['max_hp']+2)
+                self.assertEqual(u['mechanics'].count('shield'),1)
+        only=server.shop(count=1,player_id='human')[0]
+        self.assertEqual(only['attack'],self.card(only['id'])['attack']+2)
+        self.assertEqual(server.shop(count=0,player_id='human'),[])
+
+    def test_mulberry_cost_and_target_scope(self):
+        room=server.arena_room('human');room['seats'][0]['commander']={'id':'mulberry'}
+        target={'zone':'shop','id':'Courier'};before=server.player('human')['gold']
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target=dict(target,zone='bench'))
+        result=server.use_commander_skill(room,'human',target=target)
+        self.assertEqual(result['player']['gold'],before-1)
+        with self.assertRaises(ValueError):server.use_commander_skill(room,'human',target=target)
+        room['round']+=1
+        server.use_commander_skill(room,'human',target=dict(target,zone='board'))
+
     def test_amiya_unity_selection_and_persistence(self):
         room=server.arena_room('human');room['seats'][0]['commander']={'id':'amiya'}
         with self.assertRaises(ValueError):server.use_commander_skill(room,'human',choice='invalid')
@@ -1064,7 +1428,7 @@ class ArenaTests(unittest.TestCase):
         preview=server.arena_preview('new-owner')
         self.assertEqual(preview,server.arena_preview('new-owner'))
         self.assertEqual(len(preview['active_factions']),6)
-        self.assertEqual(len(preview['banned_factions']),1)
+        self.assertEqual(len(preview['banned_factions']),2)
         self.assertIn('中立',preview['active_factions'])
         lobby=server.arena_start('new-owner','test')['lobby']
         self.assertEqual(lobby['active_factions'],preview['active_factions'])
